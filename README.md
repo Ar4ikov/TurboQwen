@@ -181,6 +181,9 @@ pool, tower resident). The DFlash2 drafter is baked into the image, so nothing b
 checkpoint is downloaded. Verified on a GPUStack 2.2.2 worker with two 3090s: the
 deployment downloads the checkpoint, boots in ~5 minutes, answers images, and measures
 125 tok/s at the default sampling / 145 greedy on one stream through its backend port.
+[gpustack/register.py](gpustack/register.py) does the three API calls the UI would make
+for you: the backend from the YAML, the model, and the **model route** — without a route
+the gateway answers `Model not found` for a model that is up and healthy on its port.
 One trap that is GPUStack's, not this image's: a worker pod that has lost NVML after a
 `systemctl daemon-reload` starts model pods with `NVIDIA_VISIBLE_DEVICES=''` (vLLM then
 dies with "Failed to infer device type"); `kubectl rollout restart` of the worker fixes it.
