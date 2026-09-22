@@ -36,6 +36,11 @@ RUN set -e; SP=$(venv/bin/python -c 'import vllm, os; print(os.path.dirname(vllm
     bash kvarn/install.sh; \
     bash verify.sh --install
 
+# The W4A16 DFlash2 drafter (syvai, 1.2 GB) ships in the image, so a container with no
+# models volume (GPUStack, a bare docker run) can start SPEC=dflash2 without a download.
+# A ./models bind mount hides it; HyperQwen's prepare then fetches it into the mount once.
+RUN HF_XET_HIGH_PERFORMANCE=1 venv/bin/python prepare/fetch_dflash2.py
+
 COPY boost/ /app/boost/
 RUN chmod +x /app/boost/*.sh
 

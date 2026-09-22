@@ -160,6 +160,46 @@ Every other HyperQwen knob (`MAX_LEN`, `KV_MEM`, `DFLASH_TOKENS`, `INT8_LAYERS`,
 in `hyperqwen/single-user/start_qwen.sh` and `hyperqwen/batch/start_qwen.sh` are the
 reference.
 
+## GPUStack
+
+The image doubles as a [GPUStack](https://github.com/gpustack/gpustack) custom backend
+(v2.2+). [gpustack/backend.yaml](gpustack/backend.yaml) registers it (UI: Inference
+Backends → Add from YAML, or `POST /v2/inference-backends/from-yaml`); GPUStack then
+downloads the prepared checkpoint itself and starts the container on the cards you pick:
+
+```
+/app/boost/gpustack.sh --model {{model_path}} --port {{port}} --served-model-name {{model_name}} TP={{gpu_count}} SPEC=dflash2 CTX=fast VISION=1
+```
+
+[boost/gpustack.sh](boost/gpustack.sh) turns `KEY=VALUE` tokens into HyperQwen knobs (a
+deployment's `env` overrides them), passes `--flags` from the backend parameters to
+`vllm serve`, adds `--tensor-parallel-size` from the GPU count, pins the DFlash2 pool on
+one card, and fixes GPUStack's host-index `CUDA_VISIBLE_DEVICES` when the container sees
+fewer cards. Two ready deployments: [one 3090](gpustack/model-single-3090.json) (DFlash2,
+48k, ~136 tok/s) and [two 3090s](gpustack/model-tp2-3090.json) (TP=2, 64k, ~325k-token
+pool, tower resident). The DFlash2 drafter is baked into the image, so nothing but the
+checkpoint is downloaded.
+
+What the launcher ends up running for the single-card DFlash2 profile, for anyone who
+wants the raw flags on a stock vLLM (the speculative decoding, draft head and int8 path
+need the patched image; the rest is plain vLLM 0.29):
+
+```
+vllm serve <checkpoint> --served-model-name qwen3.8-27b --host 0.0.0.0 --port 18020 \
+  --gpu-memory-utilization 0.93 --kv-cache-memory 4600000000 --max-model-len 49152 --max-num-seqs 8 \
+  --attention-backend FLASH_ATTN --kv-cache-dtype bfloat16 --mamba-ssm-cache-dtype float16 \
+  --mamba-cache-mode align --enable-prefix-caching --async-scheduling --max-num-batched-tokens 2048 \
+  --limit-mm-per-prompt '{"image":{"count":1}}' \
+  --mm-processor-kwargs '{"size":{"shortest_edge":65536,"longest_edge":2097152}}' \
+  --speculative-config '{"method":"dflash","model":/app/models/Qwen3.8-27B-DFlash2-W4A16,"num_speculative_tokens":7,"draft_sample_method":"probabilistic"}' \
+  --compilation-config '{"max_cudagraph_capture_size":64,"custom_ops":["+rms_norm","+silu_and_mul"],"cudagraph_mode":"PIECEWISE"}' \
+  --reasoning-parser qwen3 --enable-auto-tool-choice --tool-call-parser qwen3_coder \
+  --enable-prompt-tokens-details --sse-keep-alive-interval 30
+# env: VLLM_SPEC_DECODE_ATTN=1 VLLM_DFLASH2_LOOKUP=1 VLLM_VISION_CPU_OFFLOAD_GB=1
+#      VLLM_USE_FLASHINFER_SAMPLER=0 FLASHINFER_DISABLE_VERSION_CHECK=1
+#      PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+```
+
 ## Building it
 
 The image is HyperQwen's own recipe (Python 3.12 venv, vLLM 0.29.0, every patch in

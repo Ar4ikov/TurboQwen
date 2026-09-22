@@ -1,0 +1,26 @@
+{
+  "name": "qwen3.8-27b-uncensored-hyperqwen-tp2",
+  "description": "Qwen3.8-27B Uncensored AWQ-ASYM, HyperQwen fast variant on two RTX 3090 (TP=2): DFlash2 speculation, 64k context, ~325k-token KV pool, vision tower resident",
+  "source": "HUGGING_FACE",
+  "huggingface_repo_id": "Ar4ikov/Qwen3.8-27B-Uncensored-AWQ-W4A16-ASYM-HyperQwen-fast",
+  "backend": "hyperqwen",
+  "backend_version": "1.1.0",
+  "backend_parameters": [],
+  "env": {
+    "SPEC": "dflash2",
+    "CTX": "fast",
+    "VISION": "1",
+    "VISION_OFFLOAD": "0",
+    "PREFIX_CACHE": "1"
+  },
+  "replicas": 1,
+  "gpu_selector": {
+    "gpu_ids": ["gpustack-worker-5c5f79c8d-6cblm:cuda:0", "gpustack-worker-5c5f79c8d-6cblm:cuda:1"],
+    "gpus_per_replica": 2
+  },
+  "categories": ["llm"],
+  "placement_strategy": "SPREAD",
+  "restart_on_error": true,
+  "access_policy": "AUTHED",
+  "cluster_id": 1
+}

@@ -1,0 +1,54 @@
+# GPUStack (v2.2+) custom inference backend for this image.
+#
+#   UI: Inference Backends -> Add -> from YAML, paste this file
+#   API: curl -X POST http://<server>/v2/inference-backends/from-yaml \
+#          -H "Content-Type: application/json" -b gpustack_session=<jwt> \
+#          --data "$(python3 -c 'import json;print(json.dumps({"content":open("gpustack/backend.yaml").read()}))')"
+#
+# GPUStack renders default_run_command with {{model_path}} (the downloaded checkpoint),
+# {{port}}, {{model_name}} and {{gpu_count}}, appends the deployment's backend parameters
+# and starts the container on the selected GPUs. boost/gpustack.sh turns the KEY=VALUE
+# tokens into HyperQwen knobs (a deployment's env overrides them) and passes any
+# "--flag" on to vllm serve.
+backend_name: hyperqwen
+description: |
+  HyperQwen for the Ar4ikov Qwen3.8-27B AWQ-W4A16-ASYM checkpoints: vLLM 0.29.0 with the
+  syv-ai patch series (MTP / DFlash2 speculative decoding, int8 Marlin GEMMs, KVarN) plus
+  marlin-int8-asym-zp for zero-point weights, the vision tower kept on. Image:
+  ghcr.io/ar4ikov/vllm-qwen-boost (https://github.com/Ar4ikov/vllm-qwen-boost).
+
+  Deploy one of the prepared checkpoints:
+    Ar4ikov/Qwen3.8-27B-Uncensored-AWQ-W4A16-ASYM-HyperQwen-fast   (fastest single-user)
+    Ar4ikov/Qwen3.8-27B-Uncensored-AWQ-W4A16-ASYM-HyperQwen        (int8 lm_head)
+    Ar4ikov/Qwen3.8-27B-AWQ-W4A16-ASYM-HyperQwen-fast  /  ...-HyperQwen  (the base model)
+
+  Knobs go in the deployment's env: SPEC=dflash2|mtp|off, CTX=fast|long|huge,
+  MODE=single|batch, VISION=1|0, MAX_LEN, KV_MEM, DFLASH_MAX_LEN, DFLASH_TOKENS,
+  INT8_ACT=int8, PREFILL_ATTN=int8, GPU_UTIL, MAX_SEQS. Backend parameters are extra
+  vllm serve flags. One card: DFlash2 at 48k context (or MTP at 64k); two cards:
+  tensor parallel is set from the GPU count, 64k bf16 KV (CTX=fast) or 262k fp8 KV
+  (CTX=long MAX_LEN=262144).
+health_check_path: /health
+default_version: "1.1.0"
+version_configs:
+  "1.1.0":
+    image_name: ghcr.io/ar4ikov/vllm-qwen-boost:1.1.0
+    entrypoint: /bin/bash
+    custom_framework: cuda
+  latest:
+    image_name: ghcr.io/ar4ikov/vllm-qwen-boost:latest
+    entrypoint: /bin/bash
+    custom_framework: cuda
+default_entrypoint: /bin/bash
+default_run_command: >-
+  /app/boost/gpustack.sh --model {{model_path}} --port {{port}}
+  --served-model-name {{model_name}} TP={{gpu_count}}
+  SPEC=dflash2 CTX=fast VISION=1 PREFIX_CACHE=1
+default_backend_param: []
+default_env:
+  NVIDIA_DISABLE_REQUIRE: "1"
+  VLLM_WSL2_ENABLE_PIN_MEMORY: "1"
+framework_index_map:
+  cuda:
+    - "1.1.0"
+    - latest
