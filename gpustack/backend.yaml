@@ -24,13 +24,17 @@ description: |
 
   Knobs go in the deployment's env: SPEC=dflash2|mtp|off, CTX=fast|long|huge,
   MODE=single|batch, VISION=1|0, MAX_LEN, KV_MEM, DFLASH_MAX_LEN, DFLASH_TOKENS,
-  INT8_ACT=int8, PREFILL_ATTN=int8, GPU_UTIL, MAX_SEQS. Backend parameters are extra
+  INT8_ACT=int8, PREFILL_ATTN=int8, GPU_UTIL, MAX_SEQS, REASONING_EFFORT=medium. Backend parameters are extra
   vllm serve flags. One card: DFlash2 at 48k context (or MTP at 64k); two cards:
   tensor parallel is set from the GPU count, 64k bf16 KV (CTX=fast) or 262k fp8 KV
   (CTX=long MAX_LEN=262144).
 health_check_path: /health
-default_version: "1.1.0"
+default_version: "1.1.1"
 version_configs:
+  "1.1.1":
+    image_name: ghcr.io/ar4ikov/vllm-qwen-boost:1.1.1
+    entrypoint: /bin/bash
+    custom_framework: cuda
   "1.1.0":
     image_name: ghcr.io/ar4ikov/vllm-qwen-boost:1.1.0
     entrypoint: /bin/bash
@@ -50,5 +54,6 @@ default_env:
   VLLM_WSL2_ENABLE_PIN_MEMORY: "1"
 framework_index_map:
   cuda:
+    - "1.1.1"
     - "1.1.0"
     - latest

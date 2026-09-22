@@ -69,7 +69,8 @@ if [ "$TPN" = 1 ] && [ "${TP:-1}" -gt 1 ]; then
   TPN=$TP; EXTRA+=(--tensor-parallel-size "$TP")
 fi
 
-# Profile defaults: DFlash2 (the fastest single-user profile), 64k, vision on. On one card
+# Profile defaults: DFlash2 (the fastest single-user profile), 64k, vision on. KV_MEM from the
+# deployment env is honoured on any card count (per GPU, in bytes: 4.8 GiB = 5153960755). On one card
 # the tower streams from host RAM and the DFlash2 pool is pinned a gigabyte under
 # HyperQwen's default because these checkpoints carry ~0.6 GiB more weight (int8 heads)
 # than the base -fast variant the pin was sized on; the -fast siblings get 0.3 GiB back.
@@ -97,6 +98,13 @@ if [ "$SPEC" = dflash2 ] && [ -z "${DRAFT:-}" ] && [ ! -f models/Qwen3.8-27B-DFl
   venv/bin/python prepare/fetch_dflash2.py
 fi
 
+# REASONING_EFFORT=medium|low|xhigh: the default reasoning effort of the chat template
+# (Qwen3.8's template knows xhigh/medium/low; HyperQwen's prepare also maps minimal/high/max).
+# A JSON value cannot travel through the launcher's EXTRA_ARGS with spaces in it, so it is
+# emitted here without any.
+if [ -n "${REASONING_EFFORT:-}" ]; then
+  EXTRA+=(--default-chat-template-kwargs "{\"reasoning_effort\":\"$REASONING_EFFORT\"}")
+fi
 [ ${#NAMES[@]} -gt 0 ] && EXTRA=(--served-model-name "${NAMES[@]}" qwen3.8-27b "${EXTRA[@]}")
 export EXTRA_ARGS="${EXTRA[*]}"
 echo "[gpustack] MODEL=$MODEL PORT=$PORT MODE=$MODE SPEC=$SPEC CTX=$CTX VISION=$VISION VISION_OFFLOAD=$VISION_OFFLOAD TP=$TPN KV_MEM=${KV_MEM-unset} DFLASH_MAX_LEN=${DFLASH_MAX_LEN:-} MAX_LEN=${MAX_LEN:-} INT8_ACT=${INT8_ACT-unset} CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-all} EXTRA_ARGS=$EXTRA_ARGS"

@@ -1,24 +1,33 @@
 {
   "name": "qwen3.8-27b-uncensored-hyperqwen-tp2",
-  "description": "Qwen3.8-27B Uncensored AWQ-ASYM, HyperQwen fast variant on two RTX 3090 (TP=2): DFlash2 speculation, 64k context, ~325k-token KV pool, vision tower resident",
+  "description": "Qwen3.8-27B Uncensored AWQ-ASYM, HyperQwen fast variant on two RTX 3090 (TP=2): DFlash2 speculation, int8 KV, 131k context in a 4.8 GiB KV pool per card, vision tower resident, reasoning effort medium",
   "source": "huggingface",
   "huggingface_repo_id": "Ar4ikov/Qwen3.8-27B-Uncensored-AWQ-W4A16-ASYM-HyperQwen-fast",
   "backend": "hyperqwen-custom",
-  "backend_version": "1.1.0",
+  "backend_version": "1.1.1",
   "backend_parameters": [],
   "env": {
     "SPEC": "dflash2",
-    "CTX": "fast",
+    "CTX": "long",
+    "MAX_LEN": "131072",
+    "DFLASH_MAX_LEN": "131072",
+    "KV_MEM": "5153960755",
     "VISION": "1",
     "VISION_OFFLOAD": "0",
-    "PREFIX_CACHE": "1"
+    "PREFIX_CACHE": "1",
+    "REASONING_EFFORT": "medium"
   },
   "replicas": 1,
   "gpu_selector": {
-    "gpu_ids": ["gpustack-worker-5c5f79c8d-6cblm:cuda:0", "gpustack-worker-5c5f79c8d-6cblm:cuda:1"],
+    "gpu_ids": [
+      "gpustack-worker-5c5f79c8d-6cblm:cuda:0",
+      "gpustack-worker-5c5f79c8d-6cblm:cuda:1"
+    ],
     "gpus_per_replica": 2
   },
-  "categories": ["llm"],
+  "categories": [
+    "llm"
+  ],
   "placement_strategy": "spread",
   "restart_on_error": true,
   "access_policy": "authed",
