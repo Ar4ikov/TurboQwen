@@ -146,6 +146,20 @@ which costs ~36 ms per image and nothing at all when no image is sent. On two ca
 (`tp2` profile) it stays resident. `boost/image_smoke.py` is the proof, and the
 benchmark rows above were all taken with it on.
 
+### 4. TurboQuant with speculative decoding
+
+vLLM 0.29 ships four TurboQuant KV caches (`turboquant_k8v4`, `turboquant_4bit_nc`,
+`turboquant_k3v4_nc`, `turboquant_3bit_nc`), and on this model with DFlash2 or MTP
+every one of them answered garbage at 250 tok/s: the backend routes the speculative
+verify block through its prefill path, and the captured CUDA graphs replay it with
+stale shapes. Two patches in the series
+([turboquant-spec-as-decode](https://github.com/Ar4ikov/HyperQwen/blob/awq-asym/patches/turboquant-spec-as-decode.patch),
+[turboquant-skip-layers-by-name](https://github.com/Ar4ikov/HyperQwen/blob/awq-asym/patches/turboquant-skip-layers-by-name.patch))
+make the verify block a decode there and keep the drafter's sliding-window layers in
+bf16, so all four presets are correct and within 10% of int8 on short prompts. What
+they cost at long context, and why int8 stays the default here, is measured in
+[KV cache types](#kv-cache-types).
+
 ## Profiles
 
 Each file in `configs/` is one row of the table; `.env` takes the same variables.
@@ -163,6 +177,92 @@ Every other HyperQwen knob (`MAX_LEN`, `KV_MEM`, `DFLASH_TOKENS`, `INT8_LAYERS`,
 `PREFIX_CACHE`, `EXTRA_ARGS`, ...) passes through unchanged; the launchers' own comments
 in `hyperqwen/single-user/start_qwen.sh` and `hyperqwen/batch/start_qwen.sh` are the
 reference.
+
+## KV cache types
+
+Every KV cache vLLM 0.29 offers for this model, measured on the same box in the same
+geometry as the GPUStack deployment: two RTX 3090 at TP=2, `--max-model-len 262144`
+wherever the cache holds it, the pool pinned to 7.6e9 bytes per card, DFlash2 k=7 unless
+noted, vision resident, prefix caching on, vLLM 0.29.0 with the patch series
+([bench/kvcamp.sh](bench/kvcamp.sh) runs the whole table; one variant is one boot). C1 is
+the usual eight real prompts × 1,024 tokens through `vllm bench serve`, e2e tok/s /
+decode tok/s from the mean TPOT, default sampling and greedy. The 120k columns are
+[boost/long_ctx_probe.py](boost/long_ctx_probe.py): generated prose with one needle
+sentence at 50% depth, greedy, thinking off, cold TTFT with the prefill rate, the decode
+rate of the (12-token) answer, whether the needle came back, and the TTFT of a second
+question over the same document.
+
+| `--kv-cache-dtype` | attention backend | pool, tokens | × 262k | C1 default | C1 greedy | TTFT | 120k cold TTFT (prefill) | 120k decode | needle | 2nd question |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `bfloat16` (at 131k: 262k does not fit this pin) | FLASH_ATTN | 207,113 | 1.58× at 131k | 122.3 / 126.9 | 138.0 / 142.5 | 147 ms | 128 s (947 tok/s) | 72.3 | retrieved | 1.2 s |
+| `int8_per_token_head` (**the deployment**) | TRITON_ATTN + HyperQwen's split-KV verify kernel | 406,694 | 1.55× | 124.0 / 128.2 | 135.1 / 139.3 | 147 ms | 246 s (490) | 52.4 | retrieved | 5.3 s |
+| `fp8` (`SPEC=mtp`: DFlash2's fp8 verify kernel needs sm89+) | FLASHINFER | 414,995 | 1.58× | 92.7 / 94.0 | 95.6 / 97.8 | 157 ms | 133 s (906) | 111.1 | retrieved | 1.8 s |
+| `int4_per_token_head` (HyperQwen's experimental route) | TRITON_ATTN | 731,019 | 2.79× | 111.0 / 114.7 | 118.1 / 122.2 | 158 ms | 243 s (497) | 71.6 | retrieved | 6.8 s |
+| `kvarn_k4v2_g128` (`CTX=huge`) | KVARN, FLASH_ATTN for the drafter | 789,471 | 3.01× | 111.4 / 115.1 | 128.6 / 133.3 | 170 ms | 128 s (942) | 34.2 | retrieved | 2.2 s |
+| `turboquant_4bit_nc`, **stock vLLM backend** | TURBOQUANT, FLASH_ATTN for the drafter | 474,867 | 1.81× | 204 / 211 (garbage) | 247 / 258 (garbage) | 171 ms | 123 s (981) | 275 (garbage) | **missing** | no cache hit |
+| `turboquant_k8v4`, stock backend | TURBOQUANT + FLASH_ATTN | 413,327 | 1.58× | 245 / 255 (garbage) | 251 / 256 (garbage) | 170 ms | 123 s (980) | 275 (garbage) | **missing** | no cache hit |
+| `turboquant_4bit_nc`, `SPEC=off`, stock backend | TURBOQUANT | 758,837 | 2.89× | 65.0 / 65.6 | 64.2 / 64.8 | 165 ms | | | | |
+
+With the two TurboQuant patches the series now carries (below), the same four caches:
+
+| `--kv-cache-dtype` | attention backend | pool, tokens | × 262k | C1 default | C1 greedy | TTFT | 120k cold TTFT (prefill) | 120k decode | needle | 2nd question |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `turboquant_4bit_nc` | TURBOQUANT, FLASH_ATTN for the drafter | 474,867 | 1.81× | 120.1 / 122.5 | 126.5 / 130.5 | 177 ms | 129 s (938) | 11.7 | retrieved | no cache hit, 129 s |
+| `turboquant_k8v4` | TURBOQUANT + FLASH_ATTN | 413,327 | 1.58× | 129.1 / 133.0 | 127.2 / 130.5 | 174 ms | 127 s (952) | 15.3 | retrieved | no cache hit |
+| `turboquant_k3v4_nc` | TURBOQUANT + FLASH_ATTN | 528,482 | 2.02× | 114.1 / 117.8 | 119.6 / 124.1 | 173 ms | 128 s (943) | 10.5 | retrieved | no cache hit |
+| `turboquant_3bit_nc` | TURBOQUANT + FLASH_ATTN | 612,368 | 2.34× | 113.7 / 117.8 | 121.1 / 125.0 | 177 ms | 128 s (946) | 9.6 | retrieved | no cache hit |
+| `turboquant_4bit_nc`, `SPEC=mtp` (no drafter, no window layers) | TURBOQUANT | 545,259 | 2.08× | 115.3 / 118.5 | 125.5 / 129.4 | 180 ms | 131 s (923) | 21.9 | retrieved | 20.2 s, 106,496 tokens cached |
+
+Reading the two tables:
+
+- **On short prompts every correct cache is within about 10% of the others** (111–129
+  tok/s at the default sampling); the exceptions are `fp8`, which loses DFlash2 on this
+  card, and the two stock TurboQuant rows, whose 250 tok/s is garbage.
+- **The pool at 262k is not what the bit counts promise.** On this hybrid model the pool
+  is paid mostly by the DeltaNet state pages and the drafter's bf16 sliding-window
+  layers, not by the 16 attention layers, so `turboquant_4bit_nc` holds 17% more than
+  `int8_per_token_head`, `turboquant_k8v4` nothing more, and the 3-bit presets 30–50%
+  more; `int4_per_token_head` (2.79×) and KVarN (3.01×) are the caches that actually
+  fit two and three 262k requests.
+- **Long context is where the caches differ.** Cold prefill is ~950 tok/s on
+  FlashAttention-based routes (bf16, fp8, KVarN, TurboQuant) and ~490 on the Triton
+  routes (int8, int4). Decode at 120k: bf16 72, int4 72, int8 52, KVarN 34,
+  TurboQuant 10–15 tok/s. TurboQuant's decode kernel scans four positions per
+  iteration, and the verify block reads the cache once per draft row, so it is the
+  slowest long-context choice here by a wide margin. Its prefix cache also never hits
+  under DFlash2 (the bf16 window layers promote the attention block to 8,192 tokens and
+  the second question re-prefills), while with `SPEC=off` or `SPEC=mtp` it does (8.7 s
+  and 20.2 s second turns).
+- **Quality:** the needle at 120k came back on every correct row, including all four
+  TurboQuant presets. vLLM's own perplexity deltas for the presets on dense models are
+  +1.2% (`k8v4`), +2.7% (`4bit_nc`), +10.6% (`k3v4_nc`) and +20.6% (`3bit_nc`); no
+  GSM8K battery was run here.
+- **So:** `int8_per_token_head` stays the deployment's cache; `int4_per_token_head` is
+  the one to take when 262k has to fit 2–3 requests; TurboQuant is now correct and
+  supported, and on this model it is a worse trade than either.
+
+**Why stock TurboQuant "works badly" with speculative decoding, and the fix.** vLLM's
+TurboQuant backend declares CUDA-graph support for uniform batches but registers
+`reorder_batch_threshold=1` without spec-as-decode, so every verify block of DFlash2 or
+MTP (1+k query tokens per request) is routed through its *prefill* path: a per-request
+Python loop over CPU-side metadata that launches the decode kernel with synthetic
+per-token sequences (or dequantizes the whole cached context). The runner captures the
+uniform verify batches as full CUDA graphs anyway, and a captured Python loop replays
+the shapes it saw at capture time. The result is exactly what the two stock rows show:
+"decode" at 250 tok/s because the drafter's proposals are accepted almost whole
+(6.9 of 7 per step) while the target attends to the wrong keys, `quiquiqui…` as the
+answer, the needle lost, and the prefix cache never hit. Without speculation
+(`SPEC=off`) the same backend is correct, because plain decode is its captured path.
+[turboquant-spec-as-decode.patch](https://github.com/Ar4ikov/HyperQwen/blob/awq-asym/patches/turboquant-spec-as-decode.patch)
+makes the verify block a decode there: the metadata builder expands every request with
+1+k query tokens into one decode row per token (seq_len = context so far + 1, the
+request's block table repeated) in persistent device buffers, and the TurboQuant decode
+kernel attends all rows in one launch; exact, because the block's K/V are stored before
+the forward, and graph-safe, because the captured kernel reads buffers the builder
+refills every step. A second small patch lets `--kv-cache-dtype-skip-layers
+sliding_window` (which the option documents) survive the boundary-layer merge that
+sorted the list as integers; the drafter's five sliding-window layers must stay bf16
+because TurboQuant has no window mask.
 
 ## GPUStack
 
@@ -187,16 +287,12 @@ It also adds `--tensor-parallel-size` from the GPU count and fixes GPUStack's ho
 checked at image build time by a dry run ([boost/test_gpustack_sh.sh](boost/test_gpustack_sh.sh),
 `GPUSTACK_DRY_RUN=1`).
 
-What each KV cache choice runs on this stack (sm86), and what it costs:
-
-| `--kv-cache-dtype` | the wrapper runs | notes |
-|---|---|---|
-| `bfloat16` / `auto` | `CTX=fast`: FlashAttention, bf16 KV | fastest at short context; 64 KB/token on one card |
-| `int8_per_token_head` | `CTX=long`: Triton attention, int8 KV, DFlash2 on the split-KV verify kernel | the verified long-context cache: 262k with a 7.08 GiB pin per card at TP=2, same tok/s as bf16 on short prompts |
-| `fp8` | `CTX=long` with `SPEC=mtp` (FlashInfer) | DFlash2's fp8 verify kernel needs sm89+; ~91 tok/s here against ~130 with int8 |
-| `int4_per_token_head` | `CTX=long` plus the flag: HyperQwen's experimental 256k route | ~20% slower decode than int8 for 2× the pool ([docs/long-context.md](hyperqwen/docs/long-context.md)); not verified on this deployment |
-| `kvarn_k4v2_g128` | `CTX=huge` (KVarN 4/2-bit) | 2.13× decode tax at 112k in single-user mode, HyperQwen's measurement |
-| `turboquant_*` | **redirected to `int8_per_token_head`**, with a log line | vLLM's TurboQuant backend has no verify kernel for the speculative block here, and its chunked prefill allocates O(context) scratch outside the memory profile (OOM past ~32k-token prompts on a 24 GB card); `ALLOW_TURBOQUANT=1` passes it through untouched |
+What each `--kv-cache-dtype` runs on this stack, with the measured pool, speed and
+long-context behaviour of every one of them, is the [KV cache types](#kv-cache-types)
+section above; the wrapper's mapping in one line: `bfloat16` → `CTX=fast`,
+`int8_per_token_head` → `CTX=long` (DFlash2 kept), `fp8` → `CTX=long` with `SPEC=mtp`,
+`int4_per_token_head` → `CTX=long` plus the flag, `kvarn_k4v2_g128` → `CTX=huge`,
+`turboquant_*` → `CTX=fast` with `KV_DTYPE=<dtype>`.
 
 Two ready deployments: [one 3090](gpustack/model-single-3090.json) (DFlash2, 48k, ~136
 tok/s) and [two 3090s](gpustack/model-tp2-3090.json) (TP=2, DFlash2, **262,144 context**,
