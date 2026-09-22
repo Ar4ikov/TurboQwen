@@ -80,7 +80,7 @@ streams; pool = KV cache in tokens.
 | **M** | base, int8 heads | **111.4 tok/s** | 116.0 | 2.85 / 2.82 | 437 tok/s | 150 ms | 70,933 |
 | **D** + fast variant | base | **130.7 tok/s** | 144.9 | 3.17 / 3.44 | 449 tok/s | 153 ms | 53,233 |
 | **B** `batch` (64 concurrent 128 in / 512 out, int8 GEMMs, fp8 KV) | uncensored, int8 heads | 47.3 tok/s (no speculation) | | | **1,169 tok/s** decode, 1,072 e2e at 64 | 102 ms | 215,267 |
-| **T** `tp2` (two 3090s, TP=2, 262k, tower resident) | uncensored, fast | measuring | | | | | |
+| **T** `tp2` (two 3090s, TP=2, 262k fp8 KV, tower resident; one card on a PCIe x4 link) | uncensored, fast | 87.1 tok/s | 97.7 | 2.47 / 2.70 | 424 tok/s | 159 ms | 794,351 |
 
 For scale: HyperQwen's own reference rows on a native 3090 at 250 W and vLLM 0.29 are
 115.1 tok/s for setting B (the base model's fast variant, vision off) and 134.0 for its
