@@ -45,7 +45,12 @@ yaml_text = open(a.backend, encoding="utf-8").read()
 name = next(l.split(":", 1)[1].split("#")[0].strip() for l in yaml_text.splitlines() if l.startswith("backend_name:"))
 backends = {b.get("backend_name"): b for b in items("/v2/inference-backends?perPage=100")}
 if name in backends:
-    print(f"backend {name}: exists (id {backends[name].get('id')})")
+    # keep the registered definition in step with the YAML: a deployment that names an
+    # image version the backend does not list stays Pending ("does not support backend
+    # version X or the backend version not exists")
+    bid = backends[name].get("id")
+    st, r = call("PUT", f"/v2/inference-backends/{bid}/from-yaml", {"content": yaml_text})
+    print(f"backend {name}: exists (id {bid}), updated from YAML -> {st} {'' if st == 200 else r}")
 else:
     st, r = call("POST", "/v2/inference-backends/from-yaml", {"content": yaml_text})
     print(f"backend {name}: {st} {r if st != 200 else 'created id ' + str(r.get('id'))}")
