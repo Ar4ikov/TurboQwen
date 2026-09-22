@@ -82,7 +82,7 @@ streams; pool = KV cache in tokens.
 | **B** `batch` (64 concurrent 128 in / 512 out, int8 GEMMs, fp8 KV) | uncensored, int8 heads | 47.3 tok/s (no speculation) | | | **1,169 tok/s** decode, 1,072 e2e at 64 | 102 ms | 215,267 |
 | **T** `tp2` (two 3090s, TP=2, 262k fp8 KV, MTP, tower resident; one card on a PCIe x4 link) | uncensored, fast | 87.1 tok/s | 97.7 | 2.47 / 2.70 | 424 tok/s | 159 ms | 794,351 |
 | **T** two 3090s, DFlash2, 64k bf16 KV | uncensored, fast | 124.8 tok/s | 133.5 | 3.19 / 3.38 | 337 tok/s | 148 ms | 324,791 |
-| **G** the GPUStack deployment: two 3090s, DFlash2, **262k**, int8 KV pinned to 7.08 GiB per card (1.55 requests of the full context) | uncensored, fast | **126.2 tok/s** | 129.7 | | | 142 ms | 406,694 |
+| **G** the GPUStack deployment: two 3090s, DFlash2, **262k**, int8 KV pinned to 7.08 GiB per card (1.55 requests of the full context) | uncensored, fast | **127.1 tok/s** | 141.6 | | | 151 ms | 406,694 |
 | the same at 131k, 4.8 GiB per card | uncensored, fast | 125.0 tok/s | 135.0 | | | 147 ms | 252,143 |
 | 131k, 4.8 GiB, fp8 KV + MTP instead | uncensored, fast | 91.1 tok/s | 91.4 | | | 156 ms | ~252k |
 
@@ -204,7 +204,7 @@ int8 KV pinned to 7.08 GiB per card = a 406,694-token pool, 1.55 requests of the
 context, tower resident, reasoning effort `medium` as the template default). The DFlash2
 drafter is baked into the image, so nothing but the checkpoint is downloaded. Verified on a
 GPUStack 2.2.2 worker with two 3090s: the deployment downloads the checkpoint, boots in ~5
-minutes, answers images, and measures 126 tok/s at the default sampling / 130 greedy on one
+minutes, answers images, and measures 127 tok/s at the default sampling / 142 greedy on one
 stream through its backend port at 18.0 GB of VRAM per card.
 
 Why int8 and not bf16 or fp8 for 262k: bf16 KV at TP=2 is 32 KB per token per card, so one
@@ -215,7 +215,7 @@ prose with one needle sentence at 50% depth, greedy, thinking off, one stream):
 
 | prompt | cold TTFT (prefill rate) | decode | needle | second question over the cached prefix |
 |---|---|---|---|---|
-| 8 real prompts, 1,024-token answers (C1) | 142 ms | 130.2 tok/s | | |
+| 8 real prompts, 1,024-token answers (C1) | 151 ms | 131.1 tok/s | | |
 | 120,757 tokens | 245 s (493 tok/s) | 51.6 tok/s | retrieved | TTFT 5.3 s, 119,232 tokens cached |
 | 240,119 tokens | 856 s (280 tok/s) | 34.6 tok/s | retrieved | TTFT 11.5 s, 238,464 tokens cached |
 
