@@ -21,6 +21,14 @@
 #                    fp8            -> CTX=long with SPEC=mtp (FlashInfer fp8 KV; DFlash2's
 #                                   fp8 verify kernel needs sm89+, so on Ampere fp8 means MTP)
 #                    kvarn_k4v2_g128 -> CTX=huge (KVarN)
+#                    int4_per_token_head -> CTX=long + the flag itself (TRITON_ATTN int4 KV with
+#                                   DFlash2: HyperQwen's experimental 256k route,
+#                                   single-user/alternative.sh)
+#                    turboquant_*   -> int8_per_token_head, with a log line saying why (vLLM's
+#                                   TurboQuant backend has no verify kernel for the speculative
+#                                   block here and its chunked prefill OOMs past ~32k-token
+#                                   prompts on 24 GB; HyperQwen docs/long-context.md).
+#                                   ALLOW_TURBOQUANT=1 passes the flag through untouched.
 #   --max-num-seqs N               -> MAX_SEQS
 #   --gpu-memory-utilization X     -> GPU_UTIL
 #   --[no-]enable-prefix-caching   -> PREFIX_CACHE
@@ -31,8 +39,12 @@
 # run command applies only when the variable is not already set, so the deployment's env
 # wins over the backend's defaults. HyperQwen's prepare step is skipped: GPUStack
 # downloads the (already prepared) checkpoint; the DFlash2 drafter ships in the image.
+#
+# GPUSTACK_DRY_RUN=1 prints the resolved knobs and vllm flags (the "[gpustack] ..." line)
+# and exits before the launcher; boost/test_gpustack_sh.sh runs the translation table
+# through it at image build time.
 set -e
-cd /app
+cd "${APP_DIR:-/app}"
 export PATH=/app/venv/bin:$PATH
 export HOME=${HOME:-/cache}
 mkdir -p "$HOME" 2>/dev/null || true
@@ -86,6 +98,22 @@ while [ $i -lt ${#EXTRA[@]} ]; do
             export SPEC=mtp
           fi ;;
         kvarn*) export CTX=huge ;;
+        int4_per_token_head)
+          # HyperQwen's experimental 256k route (single-user/alternative.sh): the int4
+          # per-token-head cache on TRITON_ATTN with the DFlash2 drafter
+          # (patches/int4-kv-per-token-head.patch, spec-decode-int4-kv-mq3d.patch). CTX=long
+          # sets the backend and the int8 dtype; the flag, passed through last, overrides
+          # the dtype. About 20% slower decode than int8 on short prompts, 2x the pool.
+          echo "[gpustack] --kv-cache-dtype int4_per_token_head: HyperQwen's experimental route (TRITON_ATTN + DFlash2, docs/long-context.md); int8_per_token_head is the verified one"
+          export CTX=long; export SPEC=${SPEC:-dflash2}; export VLLM_INT4_MQ_3D=${INT4_MQ_3D:-1}
+          PASS+=("$a"); [ $adv = 2 ] && PASS+=("$v") ;;
+        turboquant*)
+          if [ "${ALLOW_TURBOQUANT:-0}" = 1 ]; then
+            PASS+=("$a"); [ $adv = 2 ] && PASS+=("$v")
+          else
+            echo "[gpustack] --kv-cache-dtype $v: TurboQuant is not a working route on this stack -- vLLM's TurboQuant backend has no verify kernel for the DFlash2/MTP block here, and its chunked prefill allocates O(context) scratch outside the memory profile (OOM past ~32k-token prompts on a 24 GB card; HyperQwen docs/long-context.md). Serving int8_per_token_head instead: the same 1 byte per element, on the split-KV verify kernel. ALLOW_TURBOQUANT=1 passes the flag through untouched."
+            export CTX=long; export SPEC=${SPEC:-dflash2}
+          fi ;;
         *) PASS+=("$a"); [ $adv = 2 ] && PASS+=("$v") ;;
       esac ;;
     *) PASS+=("$a"); [ $adv = 2 ] && PASS+=("$v") ;;
@@ -143,7 +171,7 @@ else
 fi
 
 # The DFlash2 drafter: baked into the image at /app/models; fetched once if it is not.
-if [ "$SPEC" = dflash2 ] && [ -z "${DRAFT:-}" ] && [ ! -f models/Qwen3.8-27B-DFlash2-W4A16/model.safetensors ]; then
+if [ "$SPEC" = dflash2 ] && [ "${GPUSTACK_DRY_RUN:-0}" != 1 ] && [ -z "${DRAFT:-}" ] && [ ! -f models/Qwen3.8-27B-DFlash2-W4A16/model.safetensors ]; then
   echo "[gpustack] fetching the DFlash2 drafter (syvai/Qwen3.8-27B-DFlash2-W4A16, ~1.2 GB)"
   venv/bin/python prepare/fetch_dflash2.py
 fi
@@ -164,4 +192,5 @@ fi
 [ ${#NAMES[@]} -gt 0 ] && EXTRA=(--served-model-name "${NAMES[@]}" qwen3.8-27b "${EXTRA[@]}")
 export EXTRA_ARGS="${EXTRA[*]}"
 echo "[gpustack] MODEL=$MODEL PORT=$PORT MODE=$MODE SPEC=$SPEC CTX=$CTX VISION=$VISION VISION_OFFLOAD=$VISION_OFFLOAD TP=$TPN KV_MEM=${KV_MEM-unset} MAX_LEN=${MAX_LEN:-} DFLASH_MAX_LEN=${DFLASH_MAX_LEN:-} MAX_SEQS=${MAX_SEQS:-} GPU_UTIL=${GPU_UTIL:-} INT8_ACT=${INT8_ACT-unset} CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-all} EXTRA_ARGS=$EXTRA_ARGS"
+if [ "${GPUSTACK_DRY_RUN:-0}" = 1 ]; then exit 0; fi
 if [ "$MODE" = batch ]; then exec bash batch/start_qwen.sh; else exec bash single-user/start_qwen.sh; fi

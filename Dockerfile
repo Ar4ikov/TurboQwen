@@ -43,6 +43,8 @@ RUN HF_XET_HIGH_PERFORMANCE=1 venv/bin/python prepare/fetch_dflash2.py
 
 COPY boost/ /app/boost/
 RUN chmod +x /app/boost/*.sh
+# The GPUStack wrapper's flag translation, dry-run (no GPU, no model).
+RUN bash /app/boost/test_gpustack_sh.sh
 
 # HOME is a volume: torch.compile cache, Triton, FlashInfer JIT, HF hub cache.
 RUN mkdir -p /cache /app/models && chmod 1777 /cache

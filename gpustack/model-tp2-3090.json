@@ -1,14 +1,14 @@
 {
   "name": "qwen3.8-27b-uncensored-hyperqwen-tp2",
-  "description": "Qwen3.8-27B Uncensored AWQ-ASYM, HyperQwen fast variant on two RTX 3090 (TP=2): DFlash2 speculation, 131k context, int8 KV pinned to 4.8 GiB per card, reasoning effort medium, vision tower resident",
+  "description": "Qwen3.8-27B Uncensored AWQ-ASYM, HyperQwen fast variant on two RTX 3090 (TP=2): DFlash2 speculation, 262k context, int8 KV pinned to 7.08 GiB per card (406k-token pool, 1.55 requests at 262k), reasoning effort medium, vision tower resident",
   "source": "huggingface",
   "huggingface_repo_id": "Ar4ikov/Qwen3.8-27B-Uncensored-AWQ-W4A16-ASYM-HyperQwen-fast",
   "backend": "hyperqwen-custom",
-  "backend_version": "1.2.0",
+  "backend_version": "1.2.1",
   "backend_parameters": [
     "--tensor-parallel-size=2",
-    "--max-model-len=131072",
-    "--kv-cache-memory=5153960755",
+    "--max-model-len=262144",
+    "--kv-cache-memory=7600000000",
     "--kv-cache-dtype=int8_per_token_head",
     "--max-num-seqs=8",
     "--max-num-batched-tokens=2048",

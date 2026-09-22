@@ -29,10 +29,19 @@ description: |
   HyperQwen launcher's knobs so its attention backend, speculation and pool math agree
   with them; the rest pass through). Speculation and vision are env: SPEC=dflash2|mtp|off,
   VISION=1|0, VISION_OFFLOAD, MODE=batch, INT8_ACT=int8, PREFILL_ATTN=int8, DFLASH_TOKENS.
-  On Ampere fp8 KV means SPEC=mtp (FlashInfer); int8_per_token_head keeps DFlash2.
+  On Ampere fp8 KV means SPEC=mtp (FlashInfer); int8_per_token_head keeps DFlash2 and is
+  the verified long-context cache (262k with a 7.08 GiB pin per 3090 at TP=2);
+  int4_per_token_head is HyperQwen's experimental 256k route; turboquant_* is redirected
+  to int8 with a log line (ALLOW_TURBOQUANT=1 passes it through). gpustack/register.py
+  registers this backend, a deployment, its model route and the metrics mapping that
+  puts the instance on the GPUStack Model dashboard.
 health_check_path: /health
-default_version: "1.2.0"
+default_version: "1.2.1"
 version_configs:
+  "1.2.1":
+    image_name: ghcr.io/ar4ikov/vllm-qwen-boost:1.2.1
+    entrypoint: /bin/bash
+    custom_framework: cuda
   "1.2.0":
     image_name: ghcr.io/ar4ikov/vllm-qwen-boost:1.2.0
     entrypoint: /bin/bash
@@ -60,6 +69,7 @@ default_env:
   VLLM_WSL2_ENABLE_PIN_MEMORY: "1"
 framework_index_map:
   cuda:
+    - "1.2.1"
     - "1.2.0"
     - "1.1.1"
     - "1.1.0"

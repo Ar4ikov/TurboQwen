@@ -82,8 +82,9 @@ streams; pool = KV cache in tokens.
 | **B** `batch` (64 concurrent 128 in / 512 out, int8 GEMMs, fp8 KV) | uncensored, int8 heads | 47.3 tok/s (no speculation) | | | **1,169 tok/s** decode, 1,072 e2e at 64 | 102 ms | 215,267 |
 | **T** `tp2` (two 3090s, TP=2, 262k fp8 KV, MTP, tower resident; one card on a PCIe x4 link) | uncensored, fast | 87.1 tok/s | 97.7 | 2.47 / 2.70 | 424 tok/s | 159 ms | 794,351 |
 | **T** two 3090s, DFlash2, 64k bf16 KV | uncensored, fast | 124.8 tok/s | 133.5 | 3.19 / 3.38 | 337 tok/s | 148 ms | 324,791 |
-| **G** the GPUStack deployment: two 3090s, DFlash2, 131k, int8 KV pinned to 4.8 GiB per card | uncensored, fast | **125.0 tok/s** | 135.0 | | | 147 ms | 252,143 |
-| same pin, fp8 KV + MTP instead | uncensored, fast | 91.1 tok/s | 91.4 | | | 156 ms | ~252k |
+| **G** the GPUStack deployment: two 3090s, DFlash2, **262k**, int8 KV pinned to 7.08 GiB per card (1.55 requests of the full context) | uncensored, fast | **126.2 tok/s** | 129.7 | | | 142 ms | 406,694 |
+| the same at 131k, 4.8 GiB per card | uncensored, fast | 125.0 tok/s | 135.0 | | | 147 ms | 252,143 |
+| 131k, 4.8 GiB, fp8 KV + MTP instead | uncensored, fast | 91.1 tok/s | 91.4 | | | 156 ms | ~252k |
 
 For scale: HyperQwen's own reference rows on a native 3090 at 250 W and vLLM 0.29 are
 115.1 tok/s for setting B (the base model's fast variant, vision off) and 134.0 for its
@@ -177,23 +178,65 @@ downloads the prepared checkpoint itself and starts the container on the cards y
 A deployment's **backend parameters are plain `vllm serve` flags**. Six of them overlap
 with what HyperQwen's launcher decides itself, so [boost/gpustack.sh](boost/gpustack.sh)
 translates those into its knobs (`--max-model-len`, `--kv-cache-memory` per GPU in bytes,
-`--kv-cache-dtype bfloat16|int8_per_token_head|fp8`, `--max-num-seqs`,
-`--gpu-memory-utilization`, `--[no-]enable-prefix-caching`) and passes everything else
-through (`--default-chat-template-kwargs`, `--reasoning-parser`, `--tool-call-parser`,
-...). Speculation and vision stay env knobs (`SPEC=dflash2|mtp|off`, `VISION`,
-`VISION_OFFLOAD`). It also adds `--tensor-parallel-size` from the GPU count and fixes
-GPUStack's host-index `CUDA_VISIBLE_DEVICES` when the container sees fewer cards. On
-Ampere, `--kv-cache-dtype fp8` means MTP speculation (FlashInfer is the only fp8 attention
-on sm86 and DFlash2's fp8 verify kernel needs sm89+); `int8_per_token_head` keeps DFlash2
-and its speed. Two ready deployments: [one 3090](gpustack/model-single-3090.json) (DFlash2,
-48k, ~136 tok/s) and [two 3090s](gpustack/model-tp2-3090.json) (TP=2, 64k, ~325k-token
-pool, tower resident). The DFlash2 drafter is baked into the image, so nothing but the
-checkpoint is downloaded. Verified on a GPUStack 2.2.2 worker with two 3090s: the
-deployment downloads the checkpoint, boots in ~5 minutes, answers images, and measures
-125 tok/s at the default sampling / 145 greedy on one stream through its backend port.
-[gpustack/register.py](gpustack/register.py) does the three API calls the UI would make
-for you: the backend from the YAML, the model, and the **model route** — without a route
-the gateway answers `Model not found` for a model that is up and healthy on its port.
+`--kv-cache-dtype`, `--max-num-seqs`, `--gpu-memory-utilization`,
+`--[no-]enable-prefix-caching`) and passes everything else through
+(`--default-chat-template-kwargs`, `--reasoning-parser`, `--tool-call-parser`, ...).
+Speculation and vision stay env knobs (`SPEC=dflash2|mtp|off`, `VISION`, `VISION_OFFLOAD`).
+It also adds `--tensor-parallel-size` from the GPU count and fixes GPUStack's host-index
+`CUDA_VISIBLE_DEVICES` when the container sees fewer cards. The translation table is
+checked at image build time by a dry run ([boost/test_gpustack_sh.sh](boost/test_gpustack_sh.sh),
+`GPUSTACK_DRY_RUN=1`).
+
+What each KV cache choice runs on this stack (sm86), and what it costs:
+
+| `--kv-cache-dtype` | the wrapper runs | notes |
+|---|---|---|
+| `bfloat16` / `auto` | `CTX=fast`: FlashAttention, bf16 KV | fastest at short context; 64 KB/token on one card |
+| `int8_per_token_head` | `CTX=long`: Triton attention, int8 KV, DFlash2 on the split-KV verify kernel | the verified long-context cache: 262k with a 7.08 GiB pin per card at TP=2, same tok/s as bf16 on short prompts |
+| `fp8` | `CTX=long` with `SPEC=mtp` (FlashInfer) | DFlash2's fp8 verify kernel needs sm89+; ~91 tok/s here against ~130 with int8 |
+| `int4_per_token_head` | `CTX=long` plus the flag: HyperQwen's experimental 256k route | ~20% slower decode than int8 for 2× the pool ([docs/long-context.md](hyperqwen/docs/long-context.md)); not verified on this deployment |
+| `kvarn_k4v2_g128` | `CTX=huge` (KVarN 4/2-bit) | 2.13× decode tax at 112k in single-user mode, HyperQwen's measurement |
+| `turboquant_*` | **redirected to `int8_per_token_head`**, with a log line | vLLM's TurboQuant backend has no verify kernel for the speculative block here, and its chunked prefill allocates O(context) scratch outside the memory profile (OOM past ~32k-token prompts on a 24 GB card); `ALLOW_TURBOQUANT=1` passes it through untouched |
+
+Two ready deployments: [one 3090](gpustack/model-single-3090.json) (DFlash2, 48k, ~136
+tok/s) and [two 3090s](gpustack/model-tp2-3090.json) (TP=2, DFlash2, **262,144 context**,
+int8 KV pinned to 7.08 GiB per card = a 406,694-token pool, 1.55 requests of the full
+context, tower resident, reasoning effort `medium` as the template default). The DFlash2
+drafter is baked into the image, so nothing but the checkpoint is downloaded. Verified on a
+GPUStack 2.2.2 worker with two 3090s: the deployment downloads the checkpoint, boots in ~5
+minutes, answers images, and measures 126 tok/s at the default sampling / 130 greedy on one
+stream through its backend port at 18.0 GB of VRAM per card.
+
+Why int8 and not bf16 or fp8 for 262k: bf16 KV at TP=2 is 32 KB per token per card, so one
+262k request alone is 8.6 GB per card beside 8.35 GB of weights, and 1.5 of them do not fit;
+int8 halves that and, unlike fp8, keeps DFlash2 on sm86. What the deployment does with a
+long document ([boost/long_ctx_probe.py](boost/long_ctx_probe.py): generated non-repeating
+prose with one needle sentence at 50% depth, greedy, thinking off, one stream):
+
+| prompt | cold TTFT (prefill rate) | decode | needle | second question over the cached prefix |
+|---|---|---|---|---|
+| 8 real prompts, 1,024-token answers (C1) | 142 ms | 130.2 tok/s | | |
+| 120,757 tokens | 245 s (493 tok/s) | 51.6 tok/s | retrieved | TTFT 5.3 s, 119,232 tokens cached |
+| 240,119 tokens | 856 s (280 tok/s) | 34.6 tok/s | retrieved | TTFT 11.5 s, 238,464 tokens cached |
+
+The decode column at 120k/240k is a 12-token answer, so read it as the order of magnitude:
+past 100k of context DFlash2 accepts fewer drafts on anything that is not reproducing the
+prompt (HyperQwen measures 32-47 tok/s at 112k on one card), and the cold prefill is the
+Triton int8 route's known cost, about 2x FlashAttention's at 112k and superlinear past
+that. Prefix caching is what makes the mode usable: the second question over the same
+document costs seconds, not minutes. No preemption and no engine error at either length.
+
+[gpustack/register.py](gpustack/register.py) does the four API calls the UI would make for
+you: the backend from the YAML, the model, the **model route** — without a route the
+gateway answers `Model not found` for a model that is up and healthy on its port — and
+the **metrics mapping**. GPUStack's worker scrapes an instance's `/metrics` only when its
+backend name has a `runtime_mapping` entry in the metrics config (builtin: vLLM, SGLang,
+MindIE), so a custom backend reads "No data" on the GPUStack Model dashboard while the pod
+serves all 400+ `vllm:` metrics; `register.py` registers the vLLM mapping under
+`hyperqwen-custom` through `POST /v2/metrics/config` (the server writes
+`custom_metrics_config.yaml` into its data dir, the worker refreshes within 5 minutes).
+That file replaces the builtin one, so re-run `register.py` after a GPUStack upgrade to
+pick up new builtin mappings.
 One trap that is GPUStack's, not this image's: a worker pod that has lost NVML after a
 `systemctl daemon-reload` starts model pods with `NVIDIA_VISIBLE_DEVICES=''` (vLLM then
 dies with "Failed to infer device type"); `kubectl rollout restart` of the worker fixes it.
