@@ -22,15 +22,21 @@ description: |
     Ar4ikov/Qwen3.8-27B-Uncensored-AWQ-W4A16-ASYM-HyperQwen        (int8 lm_head)
     Ar4ikov/Qwen3.8-27B-AWQ-W4A16-ASYM-HyperQwen-fast  /  ...-HyperQwen  (the base model)
 
-  Knobs go in the deployment's env: SPEC=dflash2|mtp|off, CTX=fast|long|huge,
-  MODE=single|batch, VISION=1|0, MAX_LEN, KV_MEM, DFLASH_MAX_LEN, DFLASH_TOKENS,
-  INT8_ACT=int8, PREFILL_ATTN=int8, GPU_UTIL, MAX_SEQS, REASONING_EFFORT=medium. Backend parameters are extra
-  vllm serve flags. One card: DFlash2 at 48k context (or MTP at 64k); two cards:
-  tensor parallel is set from the GPU count, 64k bf16 KV (CTX=fast) or 262k fp8 KV
-  (CTX=long MAX_LEN=262144).
+  Backend parameters are vllm serve flags: --max-model-len, --kv-cache-memory (per GPU,
+  bytes), --kv-cache-dtype bfloat16|int8_per_token_head|fp8, --max-num-seqs,
+  --gpu-memory-utilization, --enable-prefix-caching, --default-chat-template-kwargs,
+  --reasoning-parser, --tool-call-parser, ... (the first six are translated into the
+  HyperQwen launcher's knobs so its attention backend, speculation and pool math agree
+  with them; the rest pass through). Speculation and vision are env: SPEC=dflash2|mtp|off,
+  VISION=1|0, VISION_OFFLOAD, MODE=batch, INT8_ACT=int8, PREFILL_ATTN=int8, DFLASH_TOKENS.
+  On Ampere fp8 KV means SPEC=mtp (FlashInfer); int8_per_token_head keeps DFlash2.
 health_check_path: /health
-default_version: "1.1.1"
+default_version: "1.2.0"
 version_configs:
+  "1.2.0":
+    image_name: ghcr.io/ar4ikov/vllm-qwen-boost:1.2.0
+    entrypoint: /bin/bash
+    custom_framework: cuda
   "1.1.1":
     image_name: ghcr.io/ar4ikov/vllm-qwen-boost:1.1.1
     entrypoint: /bin/bash
@@ -54,6 +60,7 @@ default_env:
   VLLM_WSL2_ENABLE_PIN_MEMORY: "1"
 framework_index_map:
   cuda:
+    - "1.2.0"
     - "1.1.1"
     - "1.1.0"
     - latest

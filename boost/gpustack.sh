@@ -2,19 +2,35 @@
 # GPUStack custom-backend launcher. GPUStack renders the backend's run command as
 #
 #   bash /app/boost/gpustack.sh --model {{model_path}} --port {{port}} \
-#        --served-model-name {{model_name}} TP={{gpu_count}} [KEY=VALUE ...] [vllm flags ...]
+#        --served-model-name {{model_name}} TP={{gpu_count}} [KEY=VALUE ...]
 #
-# and appends the deployment's backend parameters. Rules:
-#   - KEY=VALUE tokens are HyperQwen knobs (SPEC, CTX, VISION, MODE, MAX_LEN, KV_MEM,
-#     DFLASH_MAX_LEN, DFLASH_TOKENS, INT8_ACT, PREFILL_ATTN, GPU_UTIL, MAX_SEQS, ...) and
-#     are applied only when the variable is not already set: the deployment's env wins
-#     over the backend's defaults in the run command.
-#   - anything starting with "-" is passed to vLLM through EXTRA_ARGS (the launcher expands
-#     it last, so a repeated flag such as --served-model-name overrides the launcher's own).
-#   - TP=<n> (from {{gpu_count}}) adds --tensor-parallel-size <n> unless the parameters
-#     already carry one.
-# HyperQwen's prepare step is skipped: GPUStack downloads the (already prepared)
-# checkpoint and mounts it; only the DFlash2 drafter is fetched if the image lacks it.
+# and appends the deployment's backend parameters, which are plain vllm serve flags.
+#
+# HyperQwen's launcher (single-user/start_qwen.sh) decides a few of those flags itself
+# from its knobs -- the attention backend and KV dtype (CTX), the speculative config
+# (SPEC), the pinned KV pool (KV_MEM), the context (MAX_LEN), the seat count (MAX_SEQS).
+# So the vllm flags that overlap are translated into the knobs here, and the launcher
+# emits them consistently; everything else is passed through EXTRA_ARGS, which the
+# launcher expands last, so a repeated flag overrides its own. What is translated:
+#
+#   --max-model-len N              -> MAX_LEN / DFLASH_MAX_LEN
+#   --kv-cache-memory B            -> KV_MEM (per GPU, bytes; also --kv-cache-memory-bytes)
+#   --kv-cache-dtype bfloat16|auto -> CTX=fast   (FLASH_ATTN, bf16 KV)
+#                    int8_per_token_head -> CTX=long with SPEC=dflash2 (TRITON_ATTN int8 KV,
+#                                   the split-KV verify kernel of the patch series)
+#                    fp8            -> CTX=long with SPEC=mtp (FlashInfer fp8 KV; DFlash2's
+#                                   fp8 verify kernel needs sm89+, so on Ampere fp8 means MTP)
+#                    kvarn_k4v2_g128 -> CTX=huge (KVarN)
+#   --max-num-seqs N               -> MAX_SEQS
+#   --gpu-memory-utilization X     -> GPU_UTIL
+#   --[no-]enable-prefix-caching   -> PREFIX_CACHE
+#   --tensor-parallel-size N       -> kept, and TP={{gpu_count}} adds it when absent
+#
+# KEY=VALUE tokens are HyperQwen knobs (SPEC=dflash2|mtp|off, VISION=1, MODE=batch,
+# INT8_ACT=int8, PREFILL_ATTN=int8, DFLASH_TOKENS, REASONING_EFFORT, ...); a token in the
+# run command applies only when the variable is not already set, so the deployment's env
+# wins over the backend's defaults. HyperQwen's prepare step is skipped: GPUStack
+# downloads the (already prepared) checkpoint; the DFlash2 drafter ships in the image.
 set -e
 cd /app
 export PATH=/app/venv/bin:$PATH
@@ -43,6 +59,41 @@ export PORT=${PORT_ARG:-${PORT:-18020}}
 export HOST=${HOST:-0.0.0.0}
 [ -f "$MODEL/config.json" ] || { echo "gpustack.sh: no config.json under MODEL=$MODEL" >&2; exit 1; }
 
+# vllm flags the launcher also decides: translate into its knobs (see the header).
+PASS=(); i=0
+while [ $i -lt ${#EXTRA[@]} ]; do
+  a=${EXTRA[$i]}; v=""; adv=1; key=""
+  case "$a" in
+    --*=*) key=${a%%=*}; v=${a#*=} ;;
+    --*)   key=$a; nxt=${EXTRA[$((i+1))]:-}
+           if [ -n "$nxt" ] && [ "${nxt#-}" = "$nxt" ]; then v=$nxt; adv=2; fi ;;
+  esac
+  case "$key" in
+    --max-model-len)        export MAX_LEN=$v DFLASH_MAX_LEN=$v ;;
+    --kv-cache-memory|--kv-cache-memory-bytes) export KV_MEM=$v ;;
+    --max-num-seqs)         export MAX_SEQS=$v ;;
+    --gpu-memory-utilization) export GPU_UTIL=$v ;;
+    --enable-prefix-caching)    export PREFIX_CACHE=1 ;;
+    --no-enable-prefix-caching) export PREFIX_CACHE=0 ;;
+    --kv-cache-dtype)
+      case "$v" in
+        auto|bfloat16|bf16) export CTX=fast ;;
+        int8_per_token_head|int8) export CTX=long; export SPEC=${SPEC:-dflash2} ;;
+        fp8|fp8_e4m3|fp8_e5m2)
+          export CTX=long
+          if [ "${SPEC:-dflash2}" = dflash2 ]; then
+            echo "[gpustack] --kv-cache-dtype $v: DFlash2's fp8 verify kernel needs sm89+, serving fp8 KV with SPEC=mtp (FlashInfer)"
+            export SPEC=mtp
+          fi ;;
+        kvarn*) export CTX=huge ;;
+        *) PASS+=("$a"); [ $adv = 2 ] && PASS+=("$v") ;;
+      esac ;;
+    *) PASS+=("$a"); [ $adv = 2 ] && PASS+=("$v") ;;
+  esac
+  i=$((i + adv))
+done
+EXTRA=("${PASS[@]}")
+
 # GPUStack hands a replica CUDA_VISIBLE_DEVICES with HOST indexes while the container may
 # only see the assigned cards (a replica on host GPU 1 alone sees one device, index 0, and
 # CUDA_VISIBLE_DEVICES=1 finds nothing). Count what is really visible and remap.
@@ -69,11 +120,10 @@ if [ "$TPN" = 1 ] && [ "${TP:-1}" -gt 1 ]; then
   TPN=$TP; EXTRA+=(--tensor-parallel-size "$TP")
 fi
 
-# Profile defaults: DFlash2 (the fastest single-user profile), 64k, vision on. KV_MEM from the
-# deployment env is honoured on any card count (per GPU, in bytes: 4.8 GiB = 5153960755). On one card
-# the tower streams from host RAM and the DFlash2 pool is pinned a gigabyte under
-# HyperQwen's default because these checkpoints carry ~0.6 GiB more weight (int8 heads)
-# than the base -fast variant the pin was sized on; the -fast siblings get 0.3 GiB back.
+# Profile defaults: DFlash2 (the fastest single-user profile), 64k, vision on. On one card
+# the tower streams from host RAM and, unless --kv-cache-memory was given, the DFlash2 pool
+# is pinned a gigabyte under HyperQwen's default because these checkpoints carry ~0.6 GiB
+# more weight (int8 heads) than the base -fast variant the pin was sized on.
 export MODE=${MODE:-single} SPEC=${SPEC:-dflash2} CTX=${CTX:-fast} VISION=${VISION:-1} PREFIX_CACHE=${PREFIX_CACHE:-1}
 if [ "$TPN" -gt 1 ]; then
   export VISION_OFFLOAD=${VISION_OFFLOAD:-0}
@@ -98,14 +148,20 @@ if [ "$SPEC" = dflash2 ] && [ -z "${DRAFT:-}" ] && [ ! -f models/Qwen3.8-27B-DFl
   venv/bin/python prepare/fetch_dflash2.py
 fi
 
-# REASONING_EFFORT=medium|low|xhigh: the default reasoning effort of the chat template
-# (Qwen3.8's template knows xhigh/medium/low; HyperQwen's prepare also maps minimal/high/max).
-# A JSON value cannot travel through the launcher's EXTRA_ARGS with spaces in it, so it is
-# emitted here without any.
+# REASONING_EFFORT=medium|low|xhigh: the server-side default for the chat template's
+# reasoning_effort (the same thing as passing --default-chat-template-kwargs in the
+# parameters). In Qwen3.8's template xhigh and low add a system instruction; medium is the
+# bare prompt; unset means xhigh. Per request, the OpenAI-style reasoning_effort field or
+# chat_template_kwargs override it. No spaces in the JSON: EXTRA_ARGS is word-split.
 if [ -n "${REASONING_EFFORT:-}" ]; then
   EXTRA+=(--default-chat-template-kwargs "{\"reasoning_effort\":\"$REASONING_EFFORT\"}")
 fi
+# The launcher only emits --kv-cache-memory on its DFlash2 branch (MTP sizes the pool from
+# GPU_UTIL); a pin asked for here is a pin on every branch, so it is re-emitted last.
+if [ -n "${KV_MEM:-}" ]; then
+  EXTRA+=(--kv-cache-memory "$KV_MEM")
+fi
 [ ${#NAMES[@]} -gt 0 ] && EXTRA=(--served-model-name "${NAMES[@]}" qwen3.8-27b "${EXTRA[@]}")
 export EXTRA_ARGS="${EXTRA[*]}"
-echo "[gpustack] MODEL=$MODEL PORT=$PORT MODE=$MODE SPEC=$SPEC CTX=$CTX VISION=$VISION VISION_OFFLOAD=$VISION_OFFLOAD TP=$TPN KV_MEM=${KV_MEM-unset} DFLASH_MAX_LEN=${DFLASH_MAX_LEN:-} MAX_LEN=${MAX_LEN:-} INT8_ACT=${INT8_ACT-unset} CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-all} EXTRA_ARGS=$EXTRA_ARGS"
+echo "[gpustack] MODEL=$MODEL PORT=$PORT MODE=$MODE SPEC=$SPEC CTX=$CTX VISION=$VISION VISION_OFFLOAD=$VISION_OFFLOAD TP=$TPN KV_MEM=${KV_MEM-unset} MAX_LEN=${MAX_LEN:-} DFLASH_MAX_LEN=${DFLASH_MAX_LEN:-} MAX_SEQS=${MAX_SEQS:-} GPU_UTIL=${GPU_UTIL:-} INT8_ACT=${INT8_ACT-unset} CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-all} EXTRA_ARGS=$EXTRA_ARGS"
 if [ "$MODE" = batch ]; then exec bash batch/start_qwen.sh; else exec bash single-user/start_qwen.sh; fi

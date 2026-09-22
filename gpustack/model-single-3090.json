@@ -1,18 +1,24 @@
 {
   "name": "qwen3.8-27b-uncensored-hyperqwen",
-  "description": "Qwen3.8-27B Uncensored AWQ-ASYM, HyperQwen fast variant: DFlash2 speculation, 48k context, vision on, one RTX 3090 (~136 tok/s single stream)",
+  "description": "Qwen3.8-27B Uncensored AWQ-ASYM, HyperQwen fast variant: DFlash2 speculation, 48k context in a 4.6 GiB bf16 KV pool, vision on (tower streamed from host RAM), one RTX 3090 (~136 tok/s single stream)",
   "source": "huggingface",
   "huggingface_repo_id": "Ar4ikov/Qwen3.8-27B-Uncensored-AWQ-W4A16-ASYM-HyperQwen-fast",
   "backend": "hyperqwen-custom",
-  "backend_version": "1.1.0",
-  "backend_parameters": [],
+  "backend_version": "1.2.0",
+  "backend_parameters": [
+    "--max-model-len=49152",
+    "--kv-cache-memory=4600000000",
+    "--kv-cache-dtype=bfloat16",
+    "--max-num-seqs=8",
+    "--enable-prefix-caching",
+    "--default-chat-template-kwargs={\"reasoning_effort\":\"medium\"}",
+    "--reasoning-parser=qwen3",
+    "--enable-auto-tool-choice",
+    "--tool-call-parser=qwen3_coder"
+  ],
   "env": {
     "SPEC": "dflash2",
-    "CTX": "fast",
-    "VISION": "1",
-    "PREFIX_CACHE": "1",
-    "KV_MEM": "4600000000",
-    "DFLASH_MAX_LEN": "49152"
+    "VISION": "1"
   },
   "replicas": 1,
   "gpu_selector": {

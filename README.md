@@ -80,7 +80,10 @@ streams; pool = KV cache in tokens.
 | **M** | base, int8 heads | **111.4 tok/s** | 116.0 | 2.85 / 2.82 | 437 tok/s | 150 ms | 70,933 |
 | **D** + fast variant | base | **130.7 tok/s** | 144.9 | 3.17 / 3.44 | 449 tok/s | 153 ms | 53,233 |
 | **B** `batch` (64 concurrent 128 in / 512 out, int8 GEMMs, fp8 KV) | uncensored, int8 heads | 47.3 tok/s (no speculation) | | | **1,169 tok/s** decode, 1,072 e2e at 64 | 102 ms | 215,267 |
-| **T** `tp2` (two 3090s, TP=2, 262k fp8 KV, tower resident; one card on a PCIe x4 link) | uncensored, fast | 87.1 tok/s | 97.7 | 2.47 / 2.70 | 424 tok/s | 159 ms | 794,351 |
+| **T** `tp2` (two 3090s, TP=2, 262k fp8 KV, MTP, tower resident; one card on a PCIe x4 link) | uncensored, fast | 87.1 tok/s | 97.7 | 2.47 / 2.70 | 424 tok/s | 159 ms | 794,351 |
+| **T** two 3090s, DFlash2, 64k bf16 KV | uncensored, fast | 124.8 tok/s | 133.5 | 3.19 / 3.38 | 337 tok/s | 148 ms | 324,791 |
+| **G** the GPUStack deployment: two 3090s, DFlash2, 131k, int8 KV pinned to 4.8 GiB per card | uncensored, fast | **125.0 tok/s** | 135.0 | | | 147 ms | 252,143 |
+| same pin, fp8 KV + MTP instead | uncensored, fast | 91.1 tok/s | 91.4 | | | 156 ms | ~252k |
 
 For scale: HyperQwen's own reference rows on a native 3090 at 250 W and vLLM 0.29 are
 115.1 tok/s for setting B (the base model's fast variant, vision off) and 134.0 for its
@@ -171,11 +174,18 @@ downloads the prepared checkpoint itself and starts the container on the cards y
 /app/boost/gpustack.sh --model {{model_path}} --port {{port}} --served-model-name {{model_name}} TP={{gpu_count}} SPEC=dflash2 CTX=fast VISION=1
 ```
 
-[boost/gpustack.sh](boost/gpustack.sh) turns `KEY=VALUE` tokens into HyperQwen knobs (a
-deployment's `env` overrides them), passes `--flags` from the backend parameters to
-`vllm serve`, adds `--tensor-parallel-size` from the GPU count, pins the DFlash2 pool on
-one card, and fixes GPUStack's host-index `CUDA_VISIBLE_DEVICES` when the container sees
-fewer cards. Two ready deployments: [one 3090](gpustack/model-single-3090.json) (DFlash2,
+A deployment's **backend parameters are plain `vllm serve` flags**. Six of them overlap
+with what HyperQwen's launcher decides itself, so [boost/gpustack.sh](boost/gpustack.sh)
+translates those into its knobs (`--max-model-len`, `--kv-cache-memory` per GPU in bytes,
+`--kv-cache-dtype bfloat16|int8_per_token_head|fp8`, `--max-num-seqs`,
+`--gpu-memory-utilization`, `--[no-]enable-prefix-caching`) and passes everything else
+through (`--default-chat-template-kwargs`, `--reasoning-parser`, `--tool-call-parser`,
+...). Speculation and vision stay env knobs (`SPEC=dflash2|mtp|off`, `VISION`,
+`VISION_OFFLOAD`). It also adds `--tensor-parallel-size` from the GPU count and fixes
+GPUStack's host-index `CUDA_VISIBLE_DEVICES` when the container sees fewer cards. On
+Ampere, `--kv-cache-dtype fp8` means MTP speculation (FlashInfer is the only fp8 attention
+on sm86 and DFlash2's fp8 verify kernel needs sm89+); `int8_per_token_head` keeps DFlash2
+and its speed. Two ready deployments: [one 3090](gpustack/model-single-3090.json) (DFlash2,
 48k, ~136 tok/s) and [two 3090s](gpustack/model-tp2-3090.json) (TP=2, 64k, ~325k-token
 pool, tower resident). The DFlash2 drafter is baked into the image, so nothing but the
 checkpoint is downloaded. Verified on a GPUStack 2.2.2 worker with two 3090s: the
