@@ -71,7 +71,7 @@ streams; pool = KV cache in tokens.
 | profile (`configs/`) | checkpoint | C1 T=default | C1 T=0 | tok/step | C8 T=default | TTFT | pool |
 |---|---|---|---|---|---|---|---|
 | **M** `single-mtp` | uncensored, int8 heads | **107.4 tok/s** | 117.2 | 2.71 / 2.85 | 441 tok/s | 151 ms | 70,933 |
-| **D** `single-dflash2` | uncensored, int8 heads | measuring | | | | | |
+| **D** `single-dflash2` | uncensored, int8 heads | **123.0 tok/s** | 135.7 | 3.15 / 3.41 | 481 tok/s | 157 ms | 49,662 |
 | **P** `single-production` (DFlash2 k=15, int8 GEMMs, int8 prefill attention) | uncensored, int8 heads | measuring | | | | | |
 | **L** `single-long` (100k, fp8 KV) | uncensored, int8 heads | measuring | | | | | |
 | **M** + fast variant (int4-GPTQ `lm_head`) | uncensored | measuring | | | | | |
