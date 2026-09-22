@@ -1,9 +1,9 @@
 {
   "name": "qwen3.8-27b-uncensored-hyperqwen",
   "description": "Qwen3.8-27B Uncensored AWQ-ASYM, HyperQwen fast variant: DFlash2 speculation, 48k context, vision on, one RTX 3090 (~136 tok/s single stream)",
-  "source": "HUGGING_FACE",
+  "source": "huggingface",
   "huggingface_repo_id": "Ar4ikov/Qwen3.8-27B-Uncensored-AWQ-W4A16-ASYM-HyperQwen-fast",
-  "backend": "hyperqwen",
+  "backend": "hyperqwen-custom",
   "backend_version": "1.1.0",
   "backend_parameters": [],
   "env": {
@@ -20,8 +20,8 @@
     "gpus_per_replica": 1
   },
   "categories": ["llm"],
-  "placement_strategy": "SPREAD",
+  "placement_strategy": "spread",
   "restart_on_error": true,
-  "access_policy": "AUTHED",
+  "access_policy": "authed",
   "cluster_id": 1
 }

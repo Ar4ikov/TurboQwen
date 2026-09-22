@@ -10,7 +10,7 @@
 # and starts the container on the selected GPUs. boost/gpustack.sh turns the KEY=VALUE
 # tokens into HyperQwen knobs (a deployment's env overrides them) and passes any
 # "--flag" on to vllm serve.
-backend_name: hyperqwen
+backend_name: hyperqwen-custom   # GPUStack requires custom backend names to end with -custom
 description: |
   HyperQwen for the Ar4ikov Qwen3.8-27B AWQ-W4A16-ASYM checkpoints: vLLM 0.29.0 with the
   syv-ai patch series (MTP / DFlash2 speculative decoding, int8 Marlin GEMMs, KVarN) plus
