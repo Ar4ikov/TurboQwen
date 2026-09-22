@@ -178,7 +178,12 @@ one card, and fixes GPUStack's host-index `CUDA_VISIBLE_DEVICES` when the contai
 fewer cards. Two ready deployments: [one 3090](gpustack/model-single-3090.json) (DFlash2,
 48k, ~136 tok/s) and [two 3090s](gpustack/model-tp2-3090.json) (TP=2, 64k, ~325k-token
 pool, tower resident). The DFlash2 drafter is baked into the image, so nothing but the
-checkpoint is downloaded.
+checkpoint is downloaded. Verified on a GPUStack 2.2.2 worker with two 3090s: the
+deployment downloads the checkpoint, boots in ~5 minutes, answers images, and measures
+125 tok/s at the default sampling / 145 greedy on one stream through its backend port.
+One trap that is GPUStack's, not this image's: a worker pod that has lost NVML after a
+`systemctl daemon-reload` starts model pods with `NVIDIA_VISIBLE_DEVICES=''` (vLLM then
+dies with "Failed to infer device type"); `kubectl rollout restart` of the worker fixes it.
 
 What the launcher ends up running for the single-card DFlash2 profile, for anyone who
 wants the raw flags on a stock vLLM (the speculative decoding, draft head and int8 path
