@@ -72,11 +72,15 @@ streams; pool = KV cache in tokens.
 |---|---|---|---|---|---|---|---|
 | **M** `single-mtp` | uncensored, int8 heads | **107.4 tok/s** | 117.2 | 2.71 / 2.85 | 441 tok/s | 151 ms | 70,933 |
 | **D** `single-dflash2` | uncensored, int8 heads | **123.0 tok/s** | 135.7 | 3.15 / 3.41 | 481 tok/s | 157 ms | 49,662 |
-| **P** `single-production` (DFlash2 k=15, int8 GEMMs, int8 prefill attention) | uncensored, int8 heads | measuring | | | | | |
+| **P** `single-production` (DFlash2 k=15, int8 GEMMs, int8 prefill attention) | uncensored, int8 heads | **117.5 tok/s** | 134.0 | 3.12 / 3.49 | 4 slots: n/a | **96 ms** | 37,834 |
 | **L** `single-long` (100k, fp8 KV) | uncensored, int8 heads | **84.4 tok/s** | 92.1 | 2.58 / 2.73 | 464 tok/s | 175 ms | 164,705 |
-| **M** + fast variant (int4-GPTQ `lm_head`) | uncensored | measuring | | | | | |
-| **M** | base, int8 heads | measuring | | | | | |
-| **B** `batch` (64 concurrent, int8 GEMMs) | uncensored | measuring | | | | | |
+| **M** + fast variant (int4-GPTQ `lm_head`, `-HyperQwen-fast`) | uncensored | **112.7 tok/s** | 127.6 | 2.74 / 2.95 | 434 tok/s | 149 ms | 80,185 |
+| **D** + fast variant | uncensored | **135.9 tok/s** | 139.3 | 3.29 / 3.29 | 401 tok/s | 150 ms | 53,233 |
+| **P** + fast variant | uncensored | **116.7 tok/s** | 135.5 | 2.97 / 3.44 | 4 slots: n/a | **96 ms** | 42,113 |
+| **M** | base, int8 heads | **111.4 tok/s** | 116.0 | 2.85 / 2.82 | 437 tok/s | 150 ms | 70,933 |
+| **D** + fast variant | base | **130.7 tok/s** | 144.9 | 3.17 / 3.44 | 449 tok/s | 153 ms | 53,233 |
+| **B** `batch` (64 concurrent 128 in / 512 out, int8 GEMMs, fp8 KV) | uncensored, int8 heads | 47.3 tok/s (no speculation) | | | **1,169 tok/s** decode, 1,072 e2e at 64 | 102 ms | 215,267 |
+| **T** `tp2` (two 3090s, TP=2, 262k, tower resident) | uncensored, fast | measuring | | | | | |
 
 For scale: HyperQwen's own reference rows on a native 3090 at 250 W and vLLM 0.29 are
 115.1 tok/s for setting B (the base model's fast variant, vision off) and 134.0 for its
