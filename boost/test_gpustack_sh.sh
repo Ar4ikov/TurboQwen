@@ -54,11 +54,11 @@ check space-form "$L" "KV_MEM=123" "MAX_LEN=4096" "DFLASH_MAX_LEN=4096" "MAX_SEQ
 L=$(run -- TP=1 --kv-cache-dtype fp8)
 check fp8 "$L" "CTX=long" "SPEC=mtp" "!--kv-cache-dtype"
 
-# TurboQuant is redirected to int8 unless explicitly allowed
+# TurboQuant: the launcher's KV_DTYPE hook (no explicit attention backend), DFlash2 kept
 L=$(run -- TP=2 --kv-cache-dtype=turboquant_4bit_nc --max-model-len=262144)
-check turboquant "$L" "CTX=long" "SPEC=dflash2" "MAX_LEN=262144" "!turboquant"
-L=$(run ALLOW_TURBOQUANT=1 -- TP=2 --kv-cache-dtype=turboquant_k3v4_nc)
-check turboquant-allowed "$L" "CTX=fast" "--kv-cache-dtype=turboquant_k3v4_nc"
+check turboquant "$L" "CTX=fast" "SPEC=dflash2" "KV_DTYPE=turboquant_4bit_nc" "MAX_LEN=262144" "!--kv-cache-dtype"
+L=$(run SPEC=mtp -- TP=2 --kv-cache-dtype turboquant_k8v4)
+check turboquant-mtp "$L" "CTX=fast" "SPEC=mtp" "KV_DTYPE=turboquant_k8v4" "!--kv-cache-dtype"
 
 # int4 per-token-head: the experimental route, flag kept so it overrides CTX=long's int8
 L=$(run -- TP=1 --kv-cache-dtype int4_per_token_head)

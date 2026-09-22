@@ -24,11 +24,10 @@
 #                    int4_per_token_head -> CTX=long + the flag itself (TRITON_ATTN int4 KV with
 #                                   DFlash2: HyperQwen's experimental 256k route,
 #                                   single-user/alternative.sh)
-#                    turboquant_*   -> int8_per_token_head, with a log line saying why (vLLM's
-#                                   TurboQuant backend has no verify kernel for the speculative
-#                                   block here and its chunked prefill OOMs past ~32k-token
-#                                   prompts on 24 GB; HyperQwen docs/long-context.md).
-#                                   ALLOW_TURBOQUANT=1 passes the flag through untouched.
+#                    turboquant_*   -> CTX=fast with KV_DTYPE=<dtype> (the launcher then emits
+#                                   the dtype without an explicit attention backend, so vLLM's
+#                                   TURBOQUANT backend serves the quantized layers and
+#                                   FlashAttention the drafter's sliding-window layers)
 #   --max-num-seqs N               -> MAX_SEQS
 #   --gpu-memory-utilization X     -> GPU_UTIL
 #   --[no-]enable-prefix-caching   -> PREFIX_CACHE
@@ -108,12 +107,15 @@ while [ $i -lt ${#EXTRA[@]} ]; do
           export CTX=long; export SPEC=${SPEC:-dflash2}; export VLLM_INT4_MQ_3D=${INT4_MQ_3D:-1}
           PASS+=("$a"); [ $adv = 2 ] && PASS+=("$v") ;;
         turboquant*)
-          if [ "${ALLOW_TURBOQUANT:-0}" = 1 ]; then
-            PASS+=("$a"); [ $adv = 2 ] && PASS+=("$v")
-          else
-            echo "[gpustack] --kv-cache-dtype $v: TurboQuant is not a working route on this stack -- vLLM's TurboQuant backend has no verify kernel for the DFlash2/MTP block here, and its chunked prefill allocates O(context) scratch outside the memory profile (OOM past ~32k-token prompts on a 24 GB card; HyperQwen docs/long-context.md). Serving int8_per_token_head instead: the same 1 byte per element, on the split-KV verify kernel. ALLOW_TURBOQUANT=1 passes the flag through untouched."
-            export CTX=long; export SPEC=${SPEC:-dflash2}
-          fi ;;
+          # TurboQuant (vLLM's own backend: Hadamard rotation + Lloyd-Max keys, uniform
+          # values). The launcher's CTX=fast profile with KV_DTYPE set: no explicit
+          # attention backend, so vLLM picks TURBOQUANT for the quantized layers and
+          # FlashAttention for the drafter's sliding-window layers (kept in bf16 through
+          # --kv-cache-dtype-skip-layers sliding_window; TurboQuant has no window mask).
+          # The image carries patches/turboquant-spec-as-decode.patch, without which the
+          # DFlash2/MTP verify block runs through the backend's prefill path.
+          echo "[gpustack] --kv-cache-dtype $v: TurboQuant cache, CTX=fast profile with KV_DTYPE=$v (see README, KV cache types)"
+          export CTX=fast; export SPEC=${SPEC:-dflash2}; export KV_DTYPE=$v ;;
         *) PASS+=("$a"); [ $adv = 2 ] && PASS+=("$v") ;;
       esac ;;
     *) PASS+=("$a"); [ $adv = 2 ] && PASS+=("$v") ;;
@@ -191,6 +193,6 @@ if [ -n "${KV_MEM:-}" ]; then
 fi
 [ ${#NAMES[@]} -gt 0 ] && EXTRA=(--served-model-name "${NAMES[@]}" qwen3.8-27b "${EXTRA[@]}")
 export EXTRA_ARGS="${EXTRA[*]}"
-echo "[gpustack] MODEL=$MODEL PORT=$PORT MODE=$MODE SPEC=$SPEC CTX=$CTX VISION=$VISION VISION_OFFLOAD=$VISION_OFFLOAD TP=$TPN KV_MEM=${KV_MEM-unset} MAX_LEN=${MAX_LEN:-} DFLASH_MAX_LEN=${DFLASH_MAX_LEN:-} MAX_SEQS=${MAX_SEQS:-} GPU_UTIL=${GPU_UTIL:-} INT8_ACT=${INT8_ACT-unset} CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-all} EXTRA_ARGS=$EXTRA_ARGS"
+echo "[gpustack] MODEL=$MODEL PORT=$PORT MODE=$MODE SPEC=$SPEC CTX=$CTX KV_DTYPE=${KV_DTYPE:-} VISION=$VISION VISION_OFFLOAD=$VISION_OFFLOAD TP=$TPN KV_MEM=${KV_MEM-unset} MAX_LEN=${MAX_LEN:-} DFLASH_MAX_LEN=${DFLASH_MAX_LEN:-} MAX_SEQS=${MAX_SEQS:-} GPU_UTIL=${GPU_UTIL:-} INT8_ACT=${INT8_ACT-unset} CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-all} EXTRA_ARGS=$EXTRA_ARGS"
 if [ "${GPUSTACK_DRY_RUN:-0}" = 1 ]; then exit 0; fi
 if [ "$MODE" = batch ]; then exec bash batch/start_qwen.sh; else exec bash single-user/start_qwen.sh; fi
