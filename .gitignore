@@ -1,0 +1,6 @@
+.env
+api_key.txt
+models/
+*.log
+__pycache__/
+.cache/

@@ -1,0 +1,4 @@
+[submodule "hyperqwen"]
+	path = hyperqwen
+	url = https://github.com/Ar4ikov/HyperQwen.git
+	branch = awq-asym

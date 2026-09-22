@@ -1,0 +1,37 @@
+# The HyperQwen tree is a submodule pinned to a commit of Ar4ikov/HyperQwen (branch
+# awq-asym). Check on every push and pull request that the pinned commit still applies
+# its whole patch series to a pristine vLLM tree at --fuzz 0, the way HyperQwen's own
+# patch-integrity job does, so a bump cannot land a series that the image build would
+# refuse twenty minutes later.
+
+name: patch integrity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  series:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Pinned vLLM
+        id: pin
+        run: |
+          v=$(grep -E '^vllm==' hyperqwen/docker/requirements.txt | cut -d= -f3)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "pinned vllm==$v"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: vllm-project/vllm
+          ref: v${{ steps.pin.outputs.version }}
+          path: vllm-src
+
+      - name: Apply the series at fuzz 0
+        run: bash hyperqwen/patches/check_vllm_series.sh "$PWD/vllm-src/vllm"

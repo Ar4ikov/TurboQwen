@@ -1,0 +1,12 @@
+.git
+hyperqwen/.git
+hyperqwen/models
+hyperqwen/venv
+hyperqwen/docs/media
+hyperqwen/bench/results*
+models
+.env
+api_key.txt
+*.log
+docs
+README.md
