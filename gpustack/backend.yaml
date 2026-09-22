@@ -15,7 +15,8 @@ description: |
   HyperQwen for the Ar4ikov Qwen3.8-27B AWQ-W4A16-ASYM checkpoints: vLLM 0.29.0 with the
   syv-ai patch series (MTP / DFlash2 speculative decoding, int8 Marlin GEMMs, KVarN) plus
   marlin-int8-asym-zp for zero-point weights, the vision tower kept on. Image:
-  ghcr.io/ar4ikov/vllm-qwen-boost (https://github.com/Ar4ikov/vllm-qwen-boost).
+  ghcr.io/ar4ikov/vllm-hyprfastqwen (https://github.com/Ar4ikov/vllm-hyprfastQwen; 1.0.0-1.3.0
+  were published as ghcr.io/ar4ikov/vllm-qwen-boost, which still receives every new tag).
 
   Deploy one of the prepared checkpoints:
     Ar4ikov/Qwen3.8-27B-Uncensored-AWQ-W4A16-ASYM-HyperQwen-fast   (fastest single-user)
@@ -38,8 +39,12 @@ description: |
   registers this backend, a deployment, its model route and the metrics mapping that
   puts the instance on the GPUStack Model dashboard.
 health_check_path: /health
-default_version: "1.3.0"
+default_version: "1.3.1"
 version_configs:
+  "1.3.1":
+    image_name: ghcr.io/ar4ikov/vllm-hyprfastqwen:1.3.1
+    entrypoint: /bin/bash
+    custom_framework: cuda
   "1.3.0":
     image_name: ghcr.io/ar4ikov/vllm-qwen-boost:1.3.0
     entrypoint: /bin/bash
@@ -61,7 +66,7 @@ version_configs:
     entrypoint: /bin/bash
     custom_framework: cuda
   latest:
-    image_name: ghcr.io/ar4ikov/vllm-qwen-boost:latest
+    image_name: ghcr.io/ar4ikov/vllm-hyprfastqwen:latest
     entrypoint: /bin/bash
     custom_framework: cuda
 default_entrypoint: /bin/bash
@@ -75,6 +80,7 @@ default_env:
   VLLM_WSL2_ENABLE_PIN_MEMORY: "1"
 framework_index_map:
   cuda:
+    - "1.3.1"
     - "1.3.0"
     - "1.2.1"
     - "1.2.0"

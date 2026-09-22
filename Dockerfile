@@ -1,6 +1,6 @@
-# vllm-qwen-boost: HyperQwen (vLLM 0.29.0 + its patch series + KVarN) plus the
-# marlin-int8-asym-zp patch, packaged for the Ar4ikov Qwen3.8-27B AWQ-W4A16-ASYM
-# checkpoints with the vision tower on by default.
+# vllm-hyprfastQwen (formerly vllm-qwen-boost): HyperQwen (vLLM 0.29.0 + its patch
+# series + KVarN) plus the marlin-int8-asym-zp patch, packaged for the Ar4ikov
+# Qwen3.8-27B AWQ-W4A16-ASYM checkpoints with the vision tower on by default.
 #
 # Same recipe as HyperQwen's own Dockerfile: Python 3.12 venv at /app/venv, nvcc for
 # FlashInfer's JIT, every patch in patches/series applied at --fuzz 0, KVarN installed,

@@ -1,5 +1,5 @@
 #!/bin/bash
-# vllm-qwen-boost entrypoint: pick the checkpoint, keep the vision tower, then hand
+# vllm-hyprfastQwen entrypoint: pick the checkpoint, keep the vision tower, then hand
 # over to HyperQwen's own entrypoint (prepare -> verify -> serve).
 #
 #   CHECKPOINT=uncensored (default) | base | any HF repo id in the prepared layout

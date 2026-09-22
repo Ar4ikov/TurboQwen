@@ -1,15 +1,15 @@
 <div align="center">
 
-<h1>vllm-qwen-boost</h1>
+<h1>vllm-hyprfastQwen</h1>
 
 <p><b>Qwen3.8-27B AWQ-W4A16-ASYM on the GPUs people actually own.<br>
 HyperQwen's speed stack on vLLM 0.29, the int8 Marlin path unlocked for zero-point weights, and the vision tower kept on.</b></p>
 
 <p>
-<a href="https://github.com/Ar4ikov/vllm-qwen-boost/actions/workflows/image.yml"><img alt="image" src="https://img.shields.io/github/actions/workflow/status/Ar4ikov/vllm-qwen-boost/image.yml?branch=main&label=image&labelColor=0B0D12"></a>
-<a href="https://github.com/Ar4ikov/vllm-qwen-boost/actions/workflows/submodule-check.yml"><img alt="patch integrity" src="https://img.shields.io/github/actions/workflow/status/Ar4ikov/vllm-qwen-boost/submodule-check.yml?branch=main&label=patch%20integrity&labelColor=0B0D12"></a>
-<a href="https://github.com/Ar4ikov/vllm-qwen-boost/pkgs/container/vllm-qwen-boost"><img alt="ghcr.io" src="https://img.shields.io/badge/ghcr.io-ar4ikov%2Fvllm--qwen--boost-2496ED?labelColor=0B0D12&logo=docker&logoColor=white"></a>
-<a href="https://github.com/Ar4ikov/vllm-qwen-boost/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/Ar4ikov/vllm-qwen-boost?sort=semver&display_name=tag&label=release&labelColor=0B0D12&color=0E9E74"></a>
+<a href="https://github.com/Ar4ikov/vllm-hyprfastQwen/actions/workflows/image.yml"><img alt="image" src="https://img.shields.io/github/actions/workflow/status/Ar4ikov/vllm-hyprfastQwen/image.yml?branch=main&label=image&labelColor=0B0D12"></a>
+<a href="https://github.com/Ar4ikov/vllm-hyprfastQwen/actions/workflows/submodule-check.yml"><img alt="patch integrity" src="https://img.shields.io/github/actions/workflow/status/Ar4ikov/vllm-hyprfastQwen/submodule-check.yml?branch=main&label=patch%20integrity&labelColor=0B0D12"></a>
+<a href="https://github.com/Ar4ikov/vllm-hyprfastQwen/pkgs/container/vllm-hyprfastqwen"><img alt="ghcr.io" src="https://img.shields.io/badge/ghcr.io-ar4ikov%2Fvllm--hyprfastqwen-2496ED?labelColor=0B0D12&logo=docker&logoColor=white"></a>
+<a href="https://github.com/Ar4ikov/vllm-hyprfastQwen/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/Ar4ikov/vllm-hyprfastQwen?sort=semver&display_name=tag&label=release&labelColor=0B0D12&color=0E9E74"></a>
 <a href="https://github.com/vllm-project/vllm/releases/tag/v0.29.0"><img alt="vLLM 0.29.0" src="https://img.shields.io/badge/vLLM-0.29.0-5C3EE8?labelColor=0B0D12"></a>
 <a href="https://github.com/Ar4ikov/HyperQwen/tree/awq-asym"><img alt="HyperQwen awq-asym" src="https://img.shields.io/badge/HyperQwen-awq--asym-0E9E74?labelColor=0B0D12"></a>
 <a href="https://huggingface.co/collections/Ar4ikov"><img alt="checkpoints" src="https://img.shields.io/badge/%F0%9F%A4%97%20checkpoints-prepared-FFD21E?labelColor=0B0D12"></a>
@@ -31,10 +31,14 @@ with zero points, the vision tower, the MTP head and the SSM gates kept in bf16 
 the checkpoints already prepared on the Hub. Three things had to happen for that, and all
 three are here: [what this repo adds](#what-this-repo-adds).
 
+The project was called `vllm-qwen-boost` until 1.3.0. It was renamed so that it is not
+taken for HyperQwen itself; the old repository URL redirects here, and the images are
+pushed under both names ([Building it](#building-it)).
+
 ## Quick start
 
 ```bash
-git clone https://github.com/Ar4ikov/vllm-qwen-boost && cd vllm-qwen-boost
+git clone https://github.com/Ar4ikov/vllm-hyprfastQwen && cd vllm-hyprfastQwen
 cp .env.example .env                      # CHECKPOINT=uncensored|base, and the profile knobs
 
 docker compose --profile single up -d     # one or a few people chatting  (RTX 3090: ~107 tok/s)
@@ -112,8 +116,10 @@ on a random asymmetric int4 g128 weight at this model's shapes, the int8 path la
 0.9–1.05% from the float reference against 0.26% for the bf16 path — the per-token
 activation noise a symmetric body pays too, nothing from the zero points. The kernel
 test, the small-M throughput numbers and the reasoning about hand-written kernels are in
-[docs/kernels.md](docs/kernels.md). The patch is proposed upstream in
-[syv-ai/HyperQwen](https://github.com/syv-ai/HyperQwen/pulls) and lives on the
+[docs/kernels.md](docs/kernels.md). The patch is proposed upstream as
+[syv-ai/HyperQwen#172](https://github.com/syv-ai/HyperQwen/pull/172), with the kernel test
+reproduced to the digit on a reviewer's 3090. The `drafter/` fixes that built the
+`-fast` variants are [#181](https://github.com/syv-ai/HyperQwen/pull/181). The patch lives on the
 [`awq-asym`](https://github.com/Ar4ikov/HyperQwen/tree/awq-asym) branch of the fork this
 image is built from, on top of the vLLM 0.29.0 port ([#148](https://github.com/syv-ai/HyperQwen/pull/148)).
 
@@ -365,9 +371,13 @@ the `hyperqwen/` submodule, plus `boost/`. It builds on a GPU-less runner in ~10
 
 | tag | when |
 |---|---|
-| `ghcr.io/ar4ikov/vllm-qwen-boost:latest` | every push to `main` |
-| `ghcr.io/ar4ikov/vllm-qwen-boost:sha-<7>` | immutable, one per commit |
-| `ghcr.io/ar4ikov/vllm-qwen-boost:1.2.3`, `1.2`, `1` | a `v1.2.3` tag, which also cuts a GitHub release |
+| `ghcr.io/ar4ikov/vllm-hyprfastqwen:latest` | every push to `main` |
+| `ghcr.io/ar4ikov/vllm-hyprfastqwen:sha-<7>` | immutable, one per commit |
+| `ghcr.io/ar4ikov/vllm-hyprfastqwen:1.2.3`, `1.2`, `1` | a `v1.2.3` tag, which also cuts a GitHub release |
+
+Every build pushes the same tags under the project's former name as well,
+`ghcr.io/ar4ikov/vllm-qwen-boost:<tag>`, so a deployment that pulls it keeps getting
+updates. The releases before the rename (1.0.0 to 1.3.0) exist under that name only.
 
 `IMAGE_TAG=1.2.3 docker compose --profile single up -d` pins a release. A second
 workflow applies the submodule's whole patch series to a pristine vLLM checkout at the
