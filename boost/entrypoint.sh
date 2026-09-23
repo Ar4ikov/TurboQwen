@@ -4,6 +4,8 @@
 #
 #   CHECKPOINT=uncensored (default) | base | any HF repo id in the prepared layout
 #   VISION=1 (default here; HyperQwen's own default is 0 = --language-model-only)
+#   IMAGES_PER_PROMPT=10 (default here; HyperQwen's VISION=1 allows 1). An explicit
+#     --limit-mm-per-prompt in EXTRA_ARGS wins.
 #
 # The prepared checkpoints on the Hub already carry the int8 lm_head/embed_tokens, the
 # int8 MTP module and the 40k draft head, so prepare only downloads them (plus the
@@ -22,5 +24,9 @@ export BASE_MODEL_DIR=${BASE_MODEL_DIR:-/app/models/$(basename "$HF_REPO")}
 export MODEL=${MODEL:-$BASE_MODEL_DIR}
 export VISION=${VISION:-1}
 export FAST_VARIANT=${FAST_VARIANT:-0}
-echo "[boost] checkpoint=$HF_REPO model=$MODEL vision=$VISION"
+# EXTRA_ARGS is expanded after HyperQwen's own --limit-mm-per-prompt, so this one wins.
+if [ "$VISION" = 1 ] && [[ " ${EXTRA_ARGS:-} " != *" --limit-mm-per-prompt"* ]]; then
+  export EXTRA_ARGS="${EXTRA_ARGS:+$EXTRA_ARGS }--limit-mm-per-prompt {\"image\":{\"count\":${IMAGES_PER_PROMPT:-10}}}"
+fi
+echo "[boost] checkpoint=$HF_REPO model=$MODEL vision=$VISION images/prompt=${IMAGES_PER_PROMPT:-10}"
 exec bash docker/entrypoint.sh "$@"

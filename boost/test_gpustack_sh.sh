@@ -84,4 +84,14 @@ check prefix-off "$L" "GPU_UTIL=0.9" "!--gpu-memory-utilization" "!--no-enable-p
 L=$(run -- TP=2 MODE=batch INT8_ACT=int8)
 check batch-tp2 "$L" "MODE=batch" "INT8_ACT=int8" "TP=2" "--tensor-parallel-size 2"
 
+# images per prompt: 10 by default with the tower on, the knob, an explicit flag wins, none without vision
+L=$(run -- TP=1)
+check images-default "$L" '--limit-mm-per-prompt {"image":{"count":10}}'
+L=$(run IMAGES_PER_PROMPT=4 -- TP=1)
+check images-knob "$L" '--limit-mm-per-prompt {"image":{"count":4}}'
+L=$(run -- TP=1 '--limit-mm-per-prompt={"image":{"count":2}}')
+check images-flag "$L" '--limit-mm-per-prompt={"image":{"count":2}}' '!{"count":10}'
+L=$(run VISION=0 -- TP=1)
+check images-no-vision "$L" '!--limit-mm-per-prompt'
+
 if [ "$fail" = 0 ]; then echo "test_gpustack_sh: $n cases ok"; else echo "test_gpustack_sh: FAILED"; exit 1; fi

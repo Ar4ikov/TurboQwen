@@ -33,6 +33,9 @@
 #   --[no-]enable-prefix-caching   -> PREFIX_CACHE
 #   --tensor-parallel-size N       -> kept, and TP={{gpu_count}} adds it when absent
 #
+# With the tower on, a prompt may carry up to IMAGES_PER_PROMPT images (default 10; HyperQwen's
+# own default is 1); an explicit --limit-mm-per-prompt in the parameters wins.
+#
 # KEY=VALUE tokens are HyperQwen knobs (SPEC=dflash2|mtp|off, VISION=1, MODE=batch,
 # INT8_ACT=int8, PREFILL_ATTN=int8, DFLASH_TOKENS, REASONING_EFFORT, ...); a token in the
 # run command applies only when the variable is not already set, so the deployment's env
@@ -185,6 +188,14 @@ fi
 # chat_template_kwargs override it. No spaces in the JSON: EXTRA_ARGS is word-split.
 if [ -n "${REASONING_EFFORT:-}" ]; then
   EXTRA+=(--default-chat-template-kwargs "{\"reasoning_effort\":\"$REASONING_EFFORT\"}")
+fi
+# Images per prompt. HyperQwen's VISION=1 emits --limit-mm-per-prompt with a count of 1;
+# EXTRA_ARGS is expanded after it, so this one wins. The per-image pixel cap (2048 image
+# tokens) stays HyperQwen's. vLLM's encoder budget is max(--max-num-batched-tokens, the
+# largest single image), not a multiple of the count, so a higher count should not shrink
+# the KV pool; not yet measured on a booted server.
+if [ "$VISION" = 1 ] && [[ " ${EXTRA[*]} " != *" --limit-mm-per-prompt"* ]]; then
+  EXTRA+=(--limit-mm-per-prompt "{\"image\":{\"count\":${IMAGES_PER_PROMPT:-10}}}")
 fi
 # The launcher only emits --kv-cache-memory on its DFlash2 branch (MTP sizes the pool from
 # GPU_UTIL); a pin asked for here is a pin on every branch, so it is re-emitted last.

@@ -152,6 +152,11 @@ which costs ~36 ms per image and nothing at all when no image is sent. On two ca
 (`tp2` profile) it stays resident. `boost/image_smoke.py` is the proof, and the
 benchmark rows above were all taken with it on.
 
+A prompt may carry up to **10 images** (`IMAGES_PER_PROMPT`, both in compose and in the
+GPUStack backend; HyperQwen's own launcher allows 1). Each image is capped at 2,097,152
+pixels, about 1448x1448, which is 2,048 image tokens; a larger one is downscaled. An
+explicit `--limit-mm-per-prompt` in `EXTRA_ARGS` or the GPUStack parameters wins.
+
 ### 4. TurboQuant with speculative decoding
 
 vLLM 0.29 ships four TurboQuant KV caches (`turboquant_k8v4`, `turboquant_4bit_nc`,
@@ -352,7 +357,7 @@ vllm serve <checkpoint> --served-model-name qwen3.8-27b --host 0.0.0.0 --port 18
   --gpu-memory-utilization 0.93 --kv-cache-memory 4600000000 --max-model-len 49152 --max-num-seqs 8 \
   --attention-backend FLASH_ATTN --kv-cache-dtype bfloat16 --mamba-ssm-cache-dtype float16 \
   --mamba-cache-mode align --enable-prefix-caching --async-scheduling --max-num-batched-tokens 2048 \
-  --limit-mm-per-prompt '{"image":{"count":1}}' \
+  --limit-mm-per-prompt '{"image":{"count":10}}' \
   --mm-processor-kwargs '{"size":{"shortest_edge":65536,"longest_edge":2097152}}' \
   --speculative-config '{"method":"dflash","model":/app/models/Qwen3.8-27B-DFlash2-W4A16,"num_speculative_tokens":7,"draft_sample_method":"probabilistic"}' \
   --compilation-config '{"max_cudagraph_capture_size":64,"custom_ops":["+rms_norm","+silu_and_mul"],"cudagraph_mode":"PIECEWISE"}' \
