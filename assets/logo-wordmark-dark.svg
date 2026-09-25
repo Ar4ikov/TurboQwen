@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 100" width="560" height="100">
   <title>TurboQwen</title>
   <svg x="0" y="0" width="100" height="100" viewBox="22 22 214 214"><path d="M143.3 214.7 A88 88 0 0 1 43.4 152.3" fill="none" stroke="#1438FF" stroke-width="34" stroke-linecap="round"/><path d="M43.4 103.7 A88 88 0 0 1 143.3 41.3" fill="none" stroke="#1438FF" stroke-width="34" stroke-linecap="round"/><path d="M186.9 62.6 A88 88 0 0 1 200.1 178.5" fill="none" stroke="#14C8A4" stroke-width="34" stroke-linecap="round"/><path d="M140 116 L116 140 L230 230 Z" fill="#14C8A4" stroke="#14C8A4" stroke-width="8" stroke-linejoin="round"/><circle cx="128" cy="128" r="26" fill="#14C8A4" stroke="#14C8A4" stroke-width="8"/></svg>
-  <text x="128" y="77" textLength="425" lengthAdjust="spacingAndGlyphs" font-family="'Segoe UI', Inter, 'Helvetica Neue', Arial, sans-serif" font-weight="800" font-size="76" letter-spacing="-1.5" fill="#F0F3F8">Turbo<tspan fill="#5A74FF">Qwen</tspan></text>
+  <text x="128" y="77" textLength="425" lengthAdjust="spacingAndGlyphs" font-family="'Segoe UI', Inter, 'Helvetica Neue', Arial, sans-serif" font-weight="800" font-size="76" letter-spacing="-1.5" fill="#F0F3F8">Turbo<tspan fill="#1438FF">Qwen</tspan></text>
 </svg>
