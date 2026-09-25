@@ -1,6 +1,11 @@
 <div align="center">
 
-<h1>TurboQwen</h1>
+<h1>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-wordmark-dark.svg">
+  <img alt="TurboQwen" src="assets/logo-wordmark-light.svg" width="440">
+</picture>
+</h1>
 
 <p><b>Qwen3.8-27B AWQ-W4A16-ASYM on the GPUs people actually own.<br>
 HyperQwen's speed stack on vLLM 0.29, the int8 Marlin path unlocked for zero-point weights, and the vision tower kept on.</b></p>
