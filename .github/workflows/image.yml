@@ -1,10 +1,10 @@
 # Build the image and push it to GitHub Container Registry, under the project's name and
-# under its former one (vllm-qwen-boost, until 1.3.0), so deployments that pull the old
-# name keep getting updates. The same tags on both:
+# under its two former ones (vllm-qwen-boost until 1.3.0, vllm-hyprfastqwen 1.3.1-1.3.2),
+# so deployments that pull an old name keep getting updates. The same tags on all three:
 #
-#   ghcr.io/ar4ikov/vllm-hyprfastqwen:latest        tracks main   (and .../vllm-qwen-boost:latest)
-#   ghcr.io/ar4ikov/vllm-hyprfastqwen:sha-<7>       immutable, one per commit
-#   ghcr.io/ar4ikov/vllm-hyprfastqwen:1.2.3, 1.2, 1  on a v1.2.3 tag (plus a GitHub release)
+#   ghcr.io/ar4ikov/turboqwen-vllm:latest        tracks main   (and .../vllm-hyprfastqwen:latest, .../vllm-qwen-boost:latest)
+#   ghcr.io/ar4ikov/turboqwen-vllm:sha-<7>       immutable, one per commit
+#   ghcr.io/ar4ikov/turboqwen-vllm:1.2.3, 1.2, 1  on a v1.2.3 tag (plus a GitHub release)
 #
 # The Dockerfile is the quality gate: it applies every patch of the HyperQwen series
 # (the hyperqwen/ submodule) against the pinned vLLM and runs verify.sh --install, so
@@ -58,6 +58,7 @@ jobs:
         id: meta
         with:
           images: |
+            ghcr.io/ar4ikov/turboqwen-vllm
             ghcr.io/ar4ikov/vllm-hyprfastqwen
             ghcr.io/ar4ikov/vllm-qwen-boost
           tags: |
@@ -67,7 +68,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
           labels: |
-            org.opencontainers.image.title=vllm-hyprfastQwen
+            org.opencontainers.image.title=TurboQwen
             org.opencontainers.image.description=Qwen3.8-27B AWQ-W4A16-ASYM on consumer GPUs: HyperQwen on vLLM 0.29 + zero-point int8 Marlin + vision
             org.opencontainers.image.licenses=Apache-2.0
 
@@ -78,9 +79,10 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: |
+            type=registry,ref=ghcr.io/ar4ikov/turboqwen-vllm:buildcache
             type=registry,ref=ghcr.io/ar4ikov/vllm-hyprfastqwen:buildcache
             type=registry,ref=ghcr.io/ar4ikov/vllm-qwen-boost:buildcache
-          cache-to: type=registry,ref=ghcr.io/ar4ikov/vllm-hyprfastqwen:buildcache,mode=max
+          cache-to: type=registry,ref=ghcr.io/ar4ikov/turboqwen-vllm:buildcache,mode=max
 
       - name: GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -88,7 +90,7 @@ jobs:
         with:
           generate_release_notes: true
           body: |
-            Image: `ghcr.io/ar4ikov/vllm-hyprfastqwen:${{ steps.meta.outputs.version }}` (also `ghcr.io/ar4ikov/vllm-qwen-boost:${{ steps.meta.outputs.version }}`, the former name)
+            Image: `ghcr.io/ar4ikov/turboqwen-vllm:${{ steps.meta.outputs.version }}` (also `ghcr.io/ar4ikov/vllm-hyprfastqwen:${{ steps.meta.outputs.version }}` and `ghcr.io/ar4ikov/vllm-qwen-boost:${{ steps.meta.outputs.version }}`, the former names)
 
             ```bash
             IMAGE_TAG=${{ steps.meta.outputs.version }} docker compose --profile single up -d

@@ -1,15 +1,15 @@
 <div align="center">
 
-<h1>vllm-hyprfastQwen</h1>
+<h1>TurboQwen</h1>
 
 <p><b>Qwen3.8-27B AWQ-W4A16-ASYM on the GPUs people actually own.<br>
 HyperQwen's speed stack on vLLM 0.29, the int8 Marlin path unlocked for zero-point weights, and the vision tower kept on.</b></p>
 
 <p>
-<a href="https://github.com/Ar4ikov/vllm-hyprfastQwen/actions/workflows/image.yml"><img alt="image" src="https://img.shields.io/github/actions/workflow/status/Ar4ikov/vllm-hyprfastQwen/image.yml?branch=main&label=image&labelColor=0B0D12"></a>
-<a href="https://github.com/Ar4ikov/vllm-hyprfastQwen/actions/workflows/submodule-check.yml"><img alt="patch integrity" src="https://img.shields.io/github/actions/workflow/status/Ar4ikov/vllm-hyprfastQwen/submodule-check.yml?branch=main&label=patch%20integrity&labelColor=0B0D12"></a>
-<a href="https://github.com/Ar4ikov/vllm-hyprfastQwen/pkgs/container/vllm-hyprfastqwen"><img alt="ghcr.io" src="https://img.shields.io/badge/ghcr.io-ar4ikov%2Fvllm--hyprfastqwen-2496ED?labelColor=0B0D12&logo=docker&logoColor=white"></a>
-<a href="https://github.com/Ar4ikov/vllm-hyprfastQwen/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/Ar4ikov/vllm-hyprfastQwen?sort=semver&display_name=tag&label=release&labelColor=0B0D12&color=0E9E74"></a>
+<a href="https://github.com/Ar4ikov/TurboQwen/actions/workflows/image.yml"><img alt="image" src="https://img.shields.io/github/actions/workflow/status/Ar4ikov/TurboQwen/image.yml?branch=main&label=image&labelColor=0B0D12"></a>
+<a href="https://github.com/Ar4ikov/TurboQwen/actions/workflows/submodule-check.yml"><img alt="patch integrity" src="https://img.shields.io/github/actions/workflow/status/Ar4ikov/TurboQwen/submodule-check.yml?branch=main&label=patch%20integrity&labelColor=0B0D12"></a>
+<a href="https://github.com/Ar4ikov/TurboQwen/pkgs/container/turboqwen-vllm"><img alt="ghcr.io" src="https://img.shields.io/badge/ghcr.io-ar4ikov%2Fturboqwen--vllm-2496ED?labelColor=0B0D12&logo=docker&logoColor=white"></a>
+<a href="https://github.com/Ar4ikov/TurboQwen/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/Ar4ikov/TurboQwen?sort=semver&display_name=tag&label=release&labelColor=0B0D12&color=0E9E74"></a>
 <a href="https://github.com/vllm-project/vllm/releases/tag/v0.29.0"><img alt="vLLM 0.29.0" src="https://img.shields.io/badge/vLLM-0.29.0-5C3EE8?labelColor=0B0D12"></a>
 <a href="https://github.com/Ar4ikov/HyperQwen/tree/awq-asym"><img alt="HyperQwen awq-asym" src="https://img.shields.io/badge/HyperQwen-awq--asym-0E9E74?labelColor=0B0D12"></a>
 <a href="https://huggingface.co/collections/Ar4ikov"><img alt="checkpoints" src="https://img.shields.io/badge/%F0%9F%A4%97%20checkpoints-prepared-FFD21E?labelColor=0B0D12"></a>
@@ -31,14 +31,14 @@ with zero points, the vision tower, the MTP head and the SSM gates kept in bf16 
 the checkpoints already prepared on the Hub. Three things had to happen for that, and all
 three are here: [what this repo adds](#what-this-repo-adds).
 
-The project was called `vllm-qwen-boost` until 1.3.0. It was renamed so that it is not
-taken for HyperQwen itself; the old repository URL redirects here, and the images are
-pushed under both names ([Building it](#building-it)).
+The project was called `vllm-qwen-boost` until 1.3.0 and `vllm-hyprfastQwen` in 1.3.1-1.3.2
+(renamed so that it is not taken for HyperQwen itself). The old repository URLs redirect
+here, and the images are pushed under all three names ([Building it](#building-it)).
 
 ## Quick start
 
 ```bash
-git clone https://github.com/Ar4ikov/vllm-hyprfastQwen && cd vllm-hyprfastQwen
+git clone https://github.com/Ar4ikov/TurboQwen && cd TurboQwen
 cp .env.example .env                      # CHECKPOINT=uncensored|base, and the profile knobs
 
 docker compose --profile single up -d     # one or a few people chatting  (RTX 3090: ~107 tok/s)
@@ -376,13 +376,14 @@ the `hyperqwen/` submodule, plus `boost/`. It builds on a GPU-less runner in ~10
 
 | tag | when |
 |---|---|
-| `ghcr.io/ar4ikov/vllm-hyprfastqwen:latest` | every push to `main` |
-| `ghcr.io/ar4ikov/vllm-hyprfastqwen:sha-<7>` | immutable, one per commit |
-| `ghcr.io/ar4ikov/vllm-hyprfastqwen:1.2.3`, `1.2`, `1` | a `v1.2.3` tag, which also cuts a GitHub release |
+| `ghcr.io/ar4ikov/turboqwen-vllm:latest` | every push to `main` |
+| `ghcr.io/ar4ikov/turboqwen-vllm:sha-<7>` | immutable, one per commit |
+| `ghcr.io/ar4ikov/turboqwen-vllm:1.2.3`, `1.2`, `1` | a `v1.2.3` tag, which also cuts a GitHub release |
 
-Every build pushes the same tags under the project's former name as well,
-`ghcr.io/ar4ikov/vllm-qwen-boost:<tag>`, so a deployment that pulls it keeps getting
-updates. The releases before the rename (1.0.0 to 1.3.0) exist under that name only.
+Every build pushes the same tags under the project's former names as well,
+`ghcr.io/ar4ikov/vllm-hyprfastqwen:<tag>` and `ghcr.io/ar4ikov/vllm-qwen-boost:<tag>`, so a
+deployment that pulls either keeps getting updates. Releases 1.0.0 to 1.3.0 exist only as
+`vllm-qwen-boost`, 1.3.1 and 1.3.2 only under the two older names.
 
 `IMAGE_TAG=1.2.3 docker compose --profile single up -d` pins a release. A second
 workflow applies the submodule's whole patch series to a pristine vLLM checkout at the

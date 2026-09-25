@@ -1,4 +1,4 @@
-# vllm-hyprfastQwen (formerly vllm-qwen-boost): HyperQwen (vLLM 0.29.0 + its patch
+# TurboQwen (formerly vllm-hyprfastQwen, vllm-qwen-boost): HyperQwen (vLLM 0.29.0 + its patch
 # series + KVarN) plus the marlin-int8-asym-zp patch, packaged for the Ar4ikov
 # Qwen3.8-27B AWQ-W4A16-ASYM checkpoints with the vision tower on by default.
 #

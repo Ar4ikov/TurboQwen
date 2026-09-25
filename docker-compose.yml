@@ -10,7 +10,7 @@
 # every HyperQwen launcher variable (SPEC, CTX, MAX_LEN, KV_MEM, INT8_ACT, ...) passes
 # straight through. One GPU runs one profile at a time.
 x-qwen: &qwen
-  image: ghcr.io/ar4ikov/vllm-hyprfastqwen:${IMAGE_TAG:-latest}
+  image: ghcr.io/ar4ikov/turboqwen-vllm:${IMAGE_TAG:-latest}
   build: .
   pull_policy: missing
   ipc: host
