@@ -1,11 +1,14 @@
-# TurboQwen (formerly vllm-hyprfastQwen, vllm-qwen-boost): HyperQwen (vLLM 0.29.0 + its patch
-# series + KVarN) plus the marlin-int8-asym-zp patch, packaged for the Ar4ikov
-# Qwen3.8-27B AWQ-W4A16-ASYM checkpoints with the vision tower on by default.
+# TurboQwen (formerly vllm-hyprfastQwen, vllm-qwen-boost): HyperQwen (vLLM 0.33.0 + its patch
+# series + KVarN, with the marlin-int8-asym-zp patch that is now part of that series) plus
+# the TurboQuant spec-as-decode patch, packaged for the Ar4ikov Qwen3.8-27B AWQ-W4A16-ASYM
+# checkpoints with the vision tower on by default.
 #
-# Same recipe as HyperQwen's own Dockerfile: Python 3.12 venv at /app/venv, nvcc for
-# FlashInfer's JIT, every patch in patches/series applied at --fuzz 0, KVarN installed,
-# verify.sh --install at build time. The HyperQwen tree comes from the git submodule
-# hyperqwen/ (Ar4ikov/HyperQwen, branch awq-asym = upstream PR #148 + the asym patch).
+# Same recipe as HyperQwen's own Dockerfile, step for step: Python 3.12 venv at /app/venv,
+# nvcc for FlashInfer's JIT, the pth-flash-attn and fp8-KV FA2 op libraries, the patched
+# xgrammar, the LSA plugin, every patch in patches/series applied at --fuzz 0 by
+# patches/apply.sh, KVarN installed, verify.sh --install and the CPU tests at build time.
+# The HyperQwen tree comes from the git submodule hyperqwen/ (Ar4ikov/HyperQwen, branch
+# awq-asym-0.33 = syv-ai/HyperQwen main + the KV_DTYPE hook + turboquant-spec-as-decode).
 #
 #   docker compose --profile single up -d      (see README.md)
 FROM nvidia/cuda:13.0.3-base-ubuntu24.04
@@ -22,19 +25,41 @@ RUN python3.12 -m venv venv && venv/bin/pip install --upgrade pip
 COPY hyperqwen/docker/requirements.txt docker/requirements.txt
 RUN venv/bin/pip install -r docker/requirements.txt
 
+# The op libraries and plugins compile ahead of the full tree, as in HyperQwen's Dockerfile,
+# so an edit elsewhere does not recompile them.
+COPY hyperqwen/pthfa/ pthfa/
+RUN PY=venv/bin/python bash pthfa/install.sh
+COPY hyperqwen/fa2/ fa2/
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* \
+    && FA2_CACHE=/tmp/fa2-cache bash fa2/install.sh && rm -rf /tmp/fa2-cache
+COPY hyperqwen/xgrammar/ xgrammar/
+RUN bash xgrammar/install.sh
+COPY hyperqwen/lsa/ lsa/
+RUN PY=venv/bin/python bash lsa/install.sh --no-map
+
 COPY hyperqwen/ /app/
-# Apply order lives in patches/series: a few patches carry hunk context an earlier
-# patch adds, so the glob order of the directory would be wrong.
+# patches/apply.sh reads the apply order from patches/series and applies it at --fuzz 0.
+# The tests after verify.sh are HyperQwen's own build-time gates (CPU tensors, no model).
 RUN set -e; SP=$(venv/bin/python -c 'import vllm, os; print(os.path.dirname(vllm.__file__))' | tail -n1); \
-    sed -e 's/#.*//' -e 's/^[[:space:]]*//;s/[[:space:]]*$//' -e '/^$/d' patches/series | \
-    while IFS= read -r name; do \
-      case "$name" in \
-        dflash2-backport.patch) echo "== skip $name (DFlash2 is native since vLLM 0.28.0)"; continue ;; \
-      esac; \
-      echo "== $name"; patch -p1 --fuzz 0 --no-backup-if-mismatch -d "$SP" < "patches/$name"; \
-    done; \
+    bash patches/apply.sh "$SP"; \
     bash kvarn/install.sh; \
-    bash verify.sh --install
+    bash verify.sh --install; \
+    venv/bin/python bench/test_draft_vocab_stats.py; \
+    venv/bin/python bench/test_gdn_checkpoint_safety.py; \
+    venv/bin/python bench/test_gdn_multi_checkpoint.py; \
+    venv/bin/python bench/test_gdn_checkpoint_export.py; \
+    venv/bin/python bench/test_offload_mamba_swa_boundaries.py; \
+    venv/bin/python bench/test_dflash_context_capacity.py; \
+    venv/bin/python bench/mq3d_scratch_pool_test.py; \
+    venv/bin/python bench/test_quant_scale_views.py; \
+    CUDA_VISIBLE_DEVICES= venv/bin/python pthfa/tests/gate_test.py; \
+    venv/bin/python fa2/tests/gate_test.py; \
+    venv/bin/python fa2/tests/check_mixed_prefill.py --device cpu; \
+    CUDA_VISIBLE_DEVICES= venv/bin/python bench/test_async_mamba_kv_sizing.py; \
+    CUDA_VISIBLE_DEVICES= venv/bin/python bench/test_kv_cache_seat_budget.py; \
+    CUDA_VISIBLE_DEVICES= venv/bin/python bench/test_continuous_stream_usage.py; \
+    venv/bin/python bench/test_gdn_ba_lora.py; \
+    CUDA_VISIBLE_DEVICES= venv/bin/python lsa/tests/gate_test.py
 
 # The W4A16 DFlash2 drafter (syvai, 1.2 GB) ships in the image, so a container with no
 # models volume (GPUStack, a bare docker run) can start SPEC=dflash2 without a download.

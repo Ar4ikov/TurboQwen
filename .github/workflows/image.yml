@@ -70,7 +70,7 @@ jobs:
             type=semver,pattern={{major}}
           labels: |
             org.opencontainers.image.title=TurboQwen
-            org.opencontainers.image.description=Qwen3.8-27B AWQ-W4A16-ASYM on consumer GPUs: HyperQwen on vLLM 0.29 + zero-point int8 Marlin + vision
+            org.opencontainers.image.description=Qwen3.8-27B AWQ-W4A16-ASYM on consumer GPUs: HyperQwen on vLLM 0.33 + zero-point int8 Marlin + vision
             org.opencontainers.image.licenses=Apache-2.0
 
       - uses: docker/build-push-action@v6

@@ -37,7 +37,7 @@
 # own default is 1); an explicit --limit-mm-per-prompt in the parameters wins.
 #
 # KEY=VALUE tokens are HyperQwen knobs (SPEC=dflash2|mtp|off, VISION=1, MODE=batch,
-# INT8_ACT=int8, PREFILL_ATTN=int8, DFLASH_TOKENS, REASONING_EFFORT, ...); a token in the
+# INT8_ACT=int8, PREFILL_ATTN=int8, DFLASH_TOKENS, REASONING_EFFORT, KV_OFFLOAD_GB, ...); a token in the
 # run command applies only when the variable is not already set, so the deployment's env
 # wins over the backend's defaults. HyperQwen's prepare step is skipped: GPUStack
 # downloads the (already prepared) checkpoint; the DFlash2 drafter ships in the image.
