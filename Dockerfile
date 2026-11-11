@@ -38,9 +38,11 @@ COPY hyperqwen/xgrammar/ xgrammar/
 # rest of xgrammar at this pin is C++17, and the LTO link fails on -Werror=odr. Build
 # against the tvm-ffi the venv already has (what vLLM's own pins resolved), which is also
 # the one the bindings load at run time.
+# pip 25.3+ reads build-environment constraints from PIP_BUILD_CONSTRAINT; PIP_CONSTRAINT
+# is kept for an older pip.
 RUN venv/bin/pip freeze | grep -i '^apache-tvm-ffi==' > /tmp/tvm-ffi.constraint \
     && cat /tmp/tvm-ffi.constraint \
-    && PIP_CONSTRAINT=/tmp/tvm-ffi.constraint bash xgrammar/install.sh
+    && PIP_BUILD_CONSTRAINT=/tmp/tvm-ffi.constraint PIP_CONSTRAINT=/tmp/tvm-ffi.constraint bash xgrammar/install.sh
 COPY hyperqwen/lsa/ lsa/
 RUN PY=venv/bin/python bash lsa/install.sh --no-map
 
