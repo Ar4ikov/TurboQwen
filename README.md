@@ -42,7 +42,8 @@ here, and the images are pushed under all three names ([Building it](#building-i
 
 > **1.4.0 moves the image from vLLM 0.29.0 to 0.33.0** (HyperQwen `main` as of 2026-11-10).
 > Every table and number below was measured on 0.29.0 with the 1.3.x images and has not
-> been re-measured on 0.33.0; 1.3.3 stays published for anyone who needs those exact numbers.
+> been re-measured on 0.33.0, except the `KV_OFFLOAD_GB` probe in [GPUStack](#gpustack);
+> 1.3.3 stays published for anyone who needs those exact numbers.
 > New with the pin: `KV_OFFLOAD_GB`, a CPU-RAM tier under the GPU prefix cache
 > ([GPUStack](#gpustack)).
 
@@ -308,6 +309,23 @@ prefix the GPU cache has evicted is copied back from RAM instead of being prefil
 The tier is one pinned file in the container's `/dev/shm`, so the pod's shared memory has
 to hold it, and it should be sized in tokens against the GPU pool, not in GiB
 (HyperQwen's [gotchas 38 and 62](https://github.com/syv-ai/HyperQwen/blob/main/docs/gotchas.md)).
+
+Measured on the 2x RTX 3090 box (TP=2, `--kv-cache-dtype=int8_per_token_head`,
+`--kv-cache-memory=4600000000`, 131k context, DFlash2, vision on; GPU pool 218,685 tokens),
+`KV_OFFLOAD_GB=32` with `GPUSTACK_MODEL_RUNTIME_SHM_SIZE_GIB=40` in the deployment's env
+(vLLM pins a 34.35 GB file), one sitting on 2026-11-12, N=1 per cell. The probe is a
+31.5k-token log with a retrievable code and a byte-identical resend; every answer was correct.
+
+| a 31.5k-token prompt | TTFT | cached tokens |
+|---|---|---|
+| cold | 24.6 s | 0 |
+| resent at once (GPU prefix cache) | 0.46 s | 31,104 |
+| resent after eight other 31.5k prompts, tier on | 0.60 s | 31,104 (from RAM) |
+| resent after five other 31.5k prompts, no tier (image 1.3.2, vLLM 0.29.0) | 24.9 s | 0 |
+
+Nine such prompts stored 19.2 GB in the tier, so 32 GiB holds roughly twice the GPU pool in
+tokens. The same boot decoded a 600-token answer at 116 tok/s; the boot itself took 7.5
+minutes with a cold compile cache.
 
 A deployment's **backend parameters are plain `vllm serve` flags**. Six of them overlap
 with what HyperQwen's launcher decides itself, so [boost/gpustack.sh](boost/gpustack.sh)
