@@ -8,15 +8,15 @@
 </h1>
 
 <p><b>Qwen3.8-27B AWQ-W4A16-ASYM on the GPUs people actually own.<br>
-HyperQwen's speed stack on vLLM 0.29, the int8 Marlin path unlocked for zero-point weights, and the vision tower kept on.</b></p>
+HyperQwen's speed stack on vLLM 0.33, the int8 Marlin path unlocked for zero-point weights, and the vision tower kept on.</b></p>
 
 <p>
 <a href="https://github.com/Ar4ikov/TurboQwen/actions/workflows/image.yml"><img alt="image" src="https://img.shields.io/github/actions/workflow/status/Ar4ikov/TurboQwen/image.yml?branch=main&label=image&labelColor=0B0D12"></a>
 <a href="https://github.com/Ar4ikov/TurboQwen/actions/workflows/submodule-check.yml"><img alt="patch integrity" src="https://img.shields.io/github/actions/workflow/status/Ar4ikov/TurboQwen/submodule-check.yml?branch=main&label=patch%20integrity&labelColor=0B0D12"></a>
 <a href="https://github.com/Ar4ikov/TurboQwen/pkgs/container/turboqwen-vllm"><img alt="ghcr.io" src="https://img.shields.io/badge/ghcr.io-ar4ikov%2Fturboqwen--vllm-2496ED?labelColor=0B0D12&logo=docker&logoColor=white"></a>
 <a href="https://github.com/Ar4ikov/TurboQwen/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/Ar4ikov/TurboQwen?sort=semver&display_name=tag&label=release&labelColor=0B0D12&color=0E9E74"></a>
-<a href="https://github.com/vllm-project/vllm/releases/tag/v0.29.0"><img alt="vLLM 0.29.0" src="https://img.shields.io/badge/vLLM-0.29.0-5C3EE8?labelColor=0B0D12"></a>
-<a href="https://github.com/Ar4ikov/HyperQwen/tree/awq-asym"><img alt="HyperQwen awq-asym" src="https://img.shields.io/badge/HyperQwen-awq--asym-0E9E74?labelColor=0B0D12"></a>
+<a href="https://github.com/vllm-project/vllm/releases/tag/v0.33.0"><img alt="vLLM 0.33.0" src="https://img.shields.io/badge/vLLM-0.33.0-5C3EE8?labelColor=0B0D12"></a>
+<a href="https://github.com/Ar4ikov/HyperQwen/tree/awq-asym-0.33"><img alt="HyperQwen awq-asym-0.33" src="https://img.shields.io/badge/HyperQwen-awq--asym--0.33-0E9E74?labelColor=0B0D12"></a>
 <a href="https://huggingface.co/collections/Ar4ikov"><img alt="checkpoints" src="https://img.shields.io/badge/%F0%9F%A4%97%20checkpoints-prepared-FFD21E?labelColor=0B0D12"></a>
 <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-0E9E74?labelColor=0B0D12"></a>
 </p>
@@ -32,13 +32,19 @@ symmetric AutoRound export of the base model, vision tower dropped.
 This repo is the same stack for **asymmetric AWQ exports** — the two
 `Ar4ikov/Qwen3.8-27B*-AWQ-W4A16-ASYM` checkpoints, quantized with llm-compressor from bf16
 with zero points, the vision tower, the MTP head and the SSM gates kept in bf16 — on
-**vLLM 0.29.0**, with **the vision tower on by default**, as **one container image** with
+**vLLM 0.33.0**, with **the vision tower on by default**, as **one container image** with
 the checkpoints already prepared on the Hub. Three things had to happen for that, and all
 three are here: [what this repo adds](#what-this-repo-adds).
 
 The project was called `vllm-qwen-boost` until 1.3.0 and `vllm-hyprfastQwen` in 1.3.1-1.3.2
 (renamed so that it is not taken for HyperQwen itself). The old repository URLs redirect
 here, and the images are pushed under all three names ([Building it](#building-it)).
+
+> **1.4.0 moves the image from vLLM 0.29.0 to 0.33.0** (HyperQwen `main` as of 2026-11-10).
+> Every table and number below was measured on 0.29.0 with the 1.3.x images and has not
+> been re-measured on 0.33.0; 1.3.3 stays published for anyone who needs those exact numbers.
+> New with the pin: `KV_OFFLOAD_GB`, a CPU-RAM tier under the GPU prefix cache
+> ([GPUStack](#gpustack)).
 
 ## Quick start
 
@@ -115,7 +121,7 @@ AssertionError: W8A8 is not supported by marlin kernel.
 
 That is the batch-mode default and the prefill win in single-user mode, and it is the
 failure a field report called "can't use int8 — it's asymmetric". The fix is
-[`patches/marlin-int8-asym-zp.patch`](https://github.com/Ar4ikov/HyperQwen/blob/awq-asym/patches/marlin-int8-asym-zp.patch):
+[`patches/marlin-int8-asym-zp.patch`](https://github.com/Ar4ikov/HyperQwen/blob/awq-asym-0.33/patches/marlin-int8-asym-zp.patch):
 admit `uint4` next to `uint4b8` in both places, refuse 8-bit weights as before. Measured
 on a random asymmetric int4 g128 weight at this model's shapes, the int8 path lands
 0.9–1.05% from the float reference against 0.26% for the bf16 path — the per-token
@@ -124,9 +130,11 @@ test, the small-M throughput numbers and the reasoning about hand-written kernel
 [docs/kernels.md](docs/kernels.md). The patch is proposed upstream as
 [syv-ai/HyperQwen#172](https://github.com/syv-ai/HyperQwen/pull/172), with the kernel test
 reproduced to the digit on a reviewer's 3090. The `drafter/` fixes that built the
-`-fast` variants are [#181](https://github.com/syv-ai/HyperQwen/pull/181). The patch lives on the
-[`awq-asym`](https://github.com/Ar4ikov/HyperQwen/tree/awq-asym) branch of the fork this
-image is built from, on top of the vLLM 0.29.0 port ([#148](https://github.com/syv-ai/HyperQwen/pull/148)).
+`-fast` variants are [#181](https://github.com/syv-ai/HyperQwen/pull/181). #172 is merged: since 1.4.0 the
+patch comes from HyperQwen's own series, and the fork branch this image is built from
+([`awq-asym-0.33`](https://github.com/Ar4ikov/HyperQwen/tree/awq-asym-0.33)) is upstream `main` on vLLM 0.33.0
+plus the TurboQuant patch and the `KV_DTYPE` hook below. 1.1.0-1.3.3 were built from
+[`awq-asym`](https://github.com/Ar4ikov/HyperQwen/tree/awq-asym), on the vLLM 0.29.0 port ([#148](https://github.com/syv-ai/HyperQwen/pull/148)).
 
 ### 2. The checkpoints, prepared
 
@@ -168,11 +176,14 @@ vLLM 0.29 ships four TurboQuant KV caches (`turboquant_k8v4`, `turboquant_4bit_n
 `turboquant_k3v4_nc`, `turboquant_3bit_nc`), and on this model with DFlash2 or MTP
 every one of them answered garbage at 250 tok/s: the backend routes the speculative
 verify block through its prefill path, and the captured CUDA graphs replay it with
-stale shapes. Two patches in the series
+stale shapes. Two patches in the 0.29 series
 ([turboquant-spec-as-decode](https://github.com/Ar4ikov/HyperQwen/blob/awq-asym/patches/turboquant-spec-as-decode.patch),
 [turboquant-skip-layers-by-name](https://github.com/Ar4ikov/HyperQwen/blob/awq-asym/patches/turboquant-skip-layers-by-name.patch))
 make the verify block a decode there and keep the drafter's sliding-window layers in
-bf16, so all four presets are correct and within 10% of int8 on short prompts. What
+bf16, so all four presets are correct and within 10% of int8 on short prompts.
+On 0.33.0 (image 1.4.0) the first is carried, re-exported at the same hunks, and the
+second is not needed: vLLM no longer sorts the skip list as integers. The TurboQuant
+route has not been re-measured on 0.33.0. What
 they cost at long context, and why int8 stays the default here, is measured in
 [KV cache types](#kv-cache-types).
 
@@ -291,6 +302,13 @@ downloads the prepared checkpoint itself and starts the container on the cards y
 /app/boost/gpustack.sh --model {{model_path}} --port {{port}} --served-model-name {{model_name}} TP={{gpu_count}} SPEC=dflash2 CTX=fast VISION=1
 ```
 
+**A second KV tier in host RAM (1.4.0).** `KV_OFFLOAD_GB=N` in the deployment's env turns
+on vLLM's OffloadingConnector through HyperQwen's launcher (`--kv-offloading-size N`): a
+prefix the GPU cache has evicted is copied back from RAM instead of being prefilled again.
+The tier is one pinned file in the container's `/dev/shm`, so the pod's shared memory has
+to hold it, and it should be sized in tokens against the GPU pool, not in GiB
+(HyperQwen's [gotchas 38 and 62](https://github.com/syv-ai/HyperQwen/blob/main/docs/gotchas.md)).
+
 A deployment's **backend parameters are plain `vllm serve` flags**. Six of them overlap
 with what HyperQwen's launcher decides itself, so [boost/gpustack.sh](boost/gpustack.sh)
 translates those into its knobs (`--max-model-len`, `--kv-cache-memory` per GPU in bytes,
@@ -375,8 +393,10 @@ vllm serve <checkpoint> --served-model-name qwen3.8-27b --host 0.0.0.0 --port 18
 
 ## Building it
 
-The image is HyperQwen's own recipe (Python 3.12 venv, vLLM 0.29.0, every patch in
-`patches/series` applied at `--fuzz 0`, KVarN, `verify.sh --install` at build time) from
+The image is HyperQwen's own recipe (Python 3.12 venv, vLLM 0.33.0, the pth-flash-attn and
+fp8-KV FA2 op libraries, the patched xgrammar, the LSA plugin, every patch in
+`patches/series` applied at `--fuzz 0`, KVarN, `verify.sh --install` and HyperQwen's CPU
+tests at build time) from
 the `hyperqwen/` submodule, plus `boost/`. It builds on a GPU-less runner in ~10 minutes.
 
 | tag | when |
@@ -400,7 +420,7 @@ git submodule update --init             # after cloning, or use --recurse-submod
 docker compose build                    # the same image, locally
 ```
 
-Bare metal: follow `hyperqwen/docs/install.md` with `vllm==0.29.0`, then
+Bare metal: follow `hyperqwen/docs/install.md` (it pins `vllm==0.33.0`), then
 `VISION=1 MODEL=$PWD/models/<checkpoint> bash single-user/start_qwen.sh`.
 
 ## Custom kernels
@@ -426,9 +446,9 @@ docker compose exec single venv/bin/python bench/test_marlin_int8_asym.py
 ## Upstream
 
 - [syv-ai/HyperQwen](https://github.com/syv-ai/HyperQwen) — the stack; this repo is a
-  packaging of its `awq-asym` fork branch and sends its changes back as pull requests.
-- [cpuchip's vLLM 0.29.0 port](https://github.com/syv-ai/HyperQwen/pull/148) — the base
-  this branch sits on.
+  packaging of its `awq-asym-0.33` fork branch and sends its changes back as pull requests.
+- The vLLM 0.33.0 pin is HyperQwen's own ([docs/vllm-0.33.md](https://github.com/syv-ai/HyperQwen/blob/main/docs/vllm-0.33.md));
+  1.1.0-1.3.3 sat on [cpuchip's vLLM 0.29.0 port](https://github.com/syv-ai/HyperQwen/pull/148).
 - [KVarN](https://github.com/syv-ai/HyperQwen/tree/main/kvarn) (Huawei CSL, Apache-2.0),
   [DFlash2](https://huggingface.co/incoai/Qwen3.8-27B-DFlash2) (incoai, requantized by
   syv-ai), [Qwen3.8](https://huggingface.co/Qwen/Qwen3.8-27B) (Alibaba Qwen, Apache-2.0).
