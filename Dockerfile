@@ -33,7 +33,14 @@ COPY hyperqwen/fa2/ fa2/
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* \
     && FA2_CACHE=/tmp/fa2-cache bash fa2/install.sh && rm -rf /tmp/fa2-cache
 COPY hyperqwen/xgrammar/ xgrammar/
-RUN bash xgrammar/install.sh
+# xgrammar builds from source in pip's isolated build environment, which resolves
+# apache-tvm-ffi on its own: 0.1.16 (2026-11-11) compiles the bindings as C++20 while the
+# rest of xgrammar at this pin is C++17, and the LTO link fails on -Werror=odr. Build
+# against the tvm-ffi the venv already has (what vLLM's own pins resolved), which is also
+# the one the bindings load at run time.
+RUN venv/bin/pip freeze | grep -i '^apache-tvm-ffi==' > /tmp/tvm-ffi.constraint \
+    && cat /tmp/tvm-ffi.constraint \
+    && PIP_CONSTRAINT=/tmp/tvm-ffi.constraint bash xgrammar/install.sh
 COPY hyperqwen/lsa/ lsa/
 RUN PY=venv/bin/python bash lsa/install.sh --no-map
 
